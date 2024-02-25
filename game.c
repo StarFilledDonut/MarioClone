@@ -2,6 +2,7 @@
 #include <SDL2/SDL_error.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_keyboard.h>
+#include <SDL2/SDL_rect.h>
 #include <SDL2/SDL_render.h>
 #include <SDL2/SDL_rwops.h>
 #include <SDL2/SDL_timer.h>
@@ -31,7 +32,7 @@ typedef struct {
 typedef struct {
   SDL_Window *window;
   SDL_Renderer *renderer;
-  SDL_Rect blocks[100];
+  SDL_Rect blocks[2];
   Sheets sheets;
   Screen screen;
   Character player;
@@ -66,7 +67,10 @@ void processEvents(GameState *state) {
   SDL_Event event;
   Character *player = &state->player;
   const u_short JUMP_FORCE = 15, MAX_SPEED = 7;
-  const float SPEED = 0.2f, FRIC = 0.85f;
+  const float SPEED = 0.1f, FRIC = 0.85f;
+
+  if (player->dy < 0) player->frame = 5;
+  else if (!player->dy && player->frame == 5) player->frame = 0;
 
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
@@ -82,68 +86,78 @@ void processEvents(GameState *state) {
             if (player->frame < 6) player->frame++;
             else player->frame--;
             break;
-          case SDLK_SPACE:
-            if (player->frame != 5) player->frame = 5;
-            break;
         }
     }
   }
   const Uint8 *key = SDL_GetKeyboardState(NULL);
-  if (key[SDL_SCANCODE_LEFT]) {
+  if (key[SDL_SCANCODE_LEFT] || key[SDL_SCANCODE_A]) {
     if (player->dx > MAX_SPEED * -1) player->dx -= SPEED;
   }
-  else if (key[SDL_SCANCODE_RIGHT]) {
+  else if (key[SDL_SCANCODE_RIGHT] || key [SDL_SCANCODE_D]) {
     if (player->dx < MAX_SPEED) player->dx += SPEED; 
   } else {
-    /* OLD FRIC
-    if (player->dx > 0) {
-      player->dx -= SPEED;
-      if (player->dx < 0) player->dx = 0;
-    } else if (player->dx < 0) {
-      player->dx += SPEED;
-      if (player->dx > 0) player->dx = 0;
-    }
-    */ // NEW FRIC, maybe it does not suit the mario feel?
     if (player->dx) {
       player->dx *= FRIC;
       if (fabsf(player->dx) < 0.1f) player->dx = 0;
     }
   }
-  if (key[SDL_SCANCODE_SPACE]) {
+  if (key[SDL_SCANCODE_SPACE] || key[SDL_SCANCODE_W] || key[SDL_SCANCODE_UP]) {
     if (!player->dy) player->dy -= JUMP_FORCE;
   }
 }
 
-void handleCollision(GameState *state) {
-  SDL_Rect *blocks = state->blocks;
-  const u_int length = sizeof(state->blocks) / sizeof(blocks[0]);
+void handleCollision(GameState *state, u_int length, float dx, float dy) {
   Character *player = &state->player;
+  SDL_Rect *blocks = state->blocks;
+  const u_int pw = player->w, ph = player->h;
+  float px = player->x, py = player->y;
+
   for (u_int i = 0; i < length; i++) {
     SDL_Rect block = blocks[i];
-    // Using AABB
-    // This basiccaly meas if it is in collsion range
-    if (
-      (player->y <= block.y + block.h && player->y + player->h >= block.y)
-      && (player->x <= block.x + block.w && player->x + player->w >= block.x)
-    ) {
-      printf("IN COLLISION!\n");
+    float bx = block.x, by = block.y;
+    const u_int bw = block.w, bh = block.h;
+    // In x or y axis range of the box.
+    const _Bool collX = px < bx + bw && px + pw > bx;
+    const _Bool collY = py < by + bh && py + ph > by;
+
+    // Make it so that player->dx -= player->dx
+    if (collX && collY) {
+      if (dx > 0) {
+        player->x = bx - pw;
+        px = player->x;
+        player->dx = 0;
+      } else if (dx < 0) {
+        player->x = bx + bw;
+        px = player->x;
+        player->dx = 0;
+      } else if (dy > 0) {
+        player->y = by - ph;
+        py = player->y;
+        player->dy = 0;
+      } else if (dy < 0) {
+        player->y = by + bh;
+        py = player->y;
+        player->dy = 0;
+      }
     }
   }
 }
 
 void physics(GameState *state) {
   Character *player = &state->player;
-  const float GROUND = state->screen.h - state->screen.tile * 3;
+  const float GROUND = state->screen.h - state->screen.tile * 2;
   player->x += player->dx;
+  const u_int blocksLength = 2;
+  handleCollision(state, blocksLength, player->dx, 0);
   player->y += player->dy;
+  handleCollision(state, blocksLength, 0, player->dy);
   // This piece of code WILL be replaced
-  if (player->y < GROUND) player->dy += GRAVITY;
+  if (player->y + player->h < GROUND) player->dy += GRAVITY;
   else if (player->dy) {
     player->frame = 0;
     player->dy = 0;
-    player->y = GROUND;
+    player->y = GROUND - player->h;
   }
-  handleCollision(state);
 }
 
 void initializeTextures(GameState *state) {
@@ -201,15 +215,23 @@ void render(GameState *state) {
 
   SDL_Rect srcsobjs[4];
   getsrcs(srcsobjs, 4);
-  SDL_Rect dstobj = { screen->w / 2.0f - screen->tile, screen->h - tile * 4, tile, tile };
+  SDL_Rect dstobj = { screen->w / 2.0f - screen->tile, screen->h - tile * 5, tile, tile };
   state->blocks[0] = dstobj;
 
   SDL_Rect srcground = { 0, 16, 32, 32 };
-  SDL_Rect dstground = { screen->w / 2.0f - tile, screen->h - tile * 2, tile * 2, tile * 2 };
+  SDL_Rect dstground = { 0, screen->h - tile * 2, tile * 2, tile * 2 };
 
   SDL_RenderCopy(state->renderer, sheets->mario, &srcsplayer[player->frame], &dstplayer);
   SDL_RenderCopy(state->renderer, sheets->objs, &srcsobjs[1], &dstobj);
-  SDL_RenderCopy(state->renderer, sheets->objs, &srcground, &dstground);
+  dstobj.x = tile;
+  dstobj.y = screen->h - tile * 3;
+  state->blocks[1] = dstobj;
+  SDL_RenderCopy(state->renderer, sheets->objs, &srcsobjs[1], &dstobj);
+  // Temporary ground
+  for (u_short i = 0; i < 6; i++) {
+    SDL_RenderCopy(state->renderer, sheets->objs, &srcground, &dstground);
+    dstground.x += dstground.w;
+  }
 
   SDL_RenderPresent(state->renderer); // Presents the drawings made
 }
@@ -255,17 +277,17 @@ int main(void) {
   Character player;
   player.w = 64;
   player.h = 64;
-  player.x = state.screen.w - player.w;
-  player.y = state.screen.h - player.h;
-  player.dx = 0.0f;
-  player.dy = 0.0f;
+  player.x = state.screen.w / 2.0f - player.w;
+  player.y = state.screen.h - player.h - state.screen.tile * 2;
+  player.dx = 0;
+  player.dy = 0;
   player.tall = 0;
   player.frame = 0;
   state.player = player;
 
   while (1) {
     processEvents(&state);
-    physics(&state);
     render(&state);
+    physics(&state);
   }
 }
