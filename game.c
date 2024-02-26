@@ -17,7 +17,7 @@ typedef struct {
   float x, y;
   u_int w, h;
   float dx, dy;
-  _Bool tall, onSurface;
+  _Bool tall, onSurface, jumpPressed;
   u_short frame;
 } Character;
 
@@ -34,6 +34,8 @@ typedef struct {
 typedef struct {
   SDL_Texture *mario;
   SDL_Texture *objs;
+  SDL_Rect srcmario[7];
+  SDL_Rect srcsobjs[4];
 } Sheets;
 
 typedef struct {
@@ -90,10 +92,23 @@ void handleEvents(GameState *state) {
           case SDLK_ESCAPE:
             quit(state, 0);
             break;
-          case SDLK_f: // case temporaria
-            if (player->frame < 6) player->frame++;
-            else player->frame--;
+          case SDLK_SPACE:
+            printf("KEYDOWN:\njumpPressed = %d\n", player->jumpPressed);
             break;
+        }
+      case SDL_KEYUP:
+        if (event.key.repeat == 0) {
+          switch (event.key.keysym.sym) {
+            case SDLK_SPACE:
+              player->jumpPressed = false;
+              break;
+            case SDLK_w:
+              player->jumpPressed = false;
+              break;
+            case SDLK_UP:
+              player->jumpPressed = false;
+              break;
+          }
         }
     }
   }
@@ -111,12 +126,23 @@ void handleEvents(GameState *state) {
       if (fabsf(player->dx) < 0.1f) player->dx = 0;
     }
   }
-  if (key[SDL_SCANCODE_SPACE] || key[SDL_SCANCODE_W] || key[SDL_SCANCODE_UP]) {
-    if (player->onSurface && !player->dy) player->dy -= JUMP_FORCE;
+  if (!player->jumpPressed && player->onSurface && !player->dy && (
+    key[SDL_SCANCODE_SPACE] || key[SDL_SCANCODE_W] || key[SDL_SCANCODE_UP]
+  )) {
+    player->dy -= JUMP_FORCE;
+    player->jumpPressed = true;
   }
 }
 
-void handleCollision(float dx, float dy, GameState *state, u_int blength, u_int objslength) {
+// Handles the collision a axis per time, call this first with dx only,
+// then call it again for the dy.
+void handleCollision(
+  float dx,
+  float dy,
+  GameState *state,
+  const u_int blength,
+  const u_int objslength
+) {
   Character *player = &state->player;
   Block *blocks = state->blocks;
   const u_int pw = player->w, ph = player->h;
@@ -170,11 +196,20 @@ void handleCollision(float dx, float dy, GameState *state, u_int blength, u_int 
       if (dx) player->dx = 0;
       else player->dy = 0;
       break;
-    } else {
-      onObj = false;
-    }
+    } else onObj = false;
   }
   player->onSurface = onBlock || onObj;
+}
+
+// Get the srcs of the specific frames of a spritesheet
+void getsrcs(SDL_Rect srcs[], u_short frames) {
+  u_int w = 16, h = 16, x = 16, y = 0;
+  for (u_short i = 0; i < frames; i++) {
+    srcs[i].x = i * x;
+    srcs[i].y = y;
+    srcs[i].w = w;
+    srcs[i].h = h;
+  }
 }
 
 // Apply physics to the player, the objects, and the eneyms.
@@ -189,6 +224,7 @@ void physics(GameState *state) {
   handleCollision(0, player->dy, state, blength, objsLength);
 }
 
+// Initialize the textures on the state.sheets, as well as the srcs.
 void initTextures(GameState *state) {
   Sheets *sheets = &state->sheets;
   const char *path = "../../../../game/assets/sprites/";
@@ -210,6 +246,8 @@ void initTextures(GameState *state) {
     printf("Could not place the sprites! SDL_Error: %s\n", SDL_GetError());
     quit(state, 1);
   }
+  getsrcs(sheets->srcmario, 7);
+  getsrcs(sheets->srcsobjs, 4);
 }
 
 void initObjs(GameState *state) {
@@ -229,16 +267,6 @@ void initObjs(GameState *state) {
   blocks[1].gotHit = false;
 }
 
-void getsrcs(SDL_Rect srcs[], u_short frames) {
-  u_int w = 16, h = 16, x = 16, y = 0;
-  for (u_short i = 0; i < frames; i++) {
-    srcs[i].x = i * x;
-    srcs[i].y = y;
-    srcs[i].w = w;
-    srcs[i].h = h;
-  }
-}
-
 // Renders to the screen
 void render(GameState *state) {
   Character *player = &state->player;
@@ -253,12 +281,8 @@ void render(GameState *state) {
   SDL_SetRenderDrawColor(state->renderer, 255, 0, 0, 255);
   SDL_RenderDrawLine(state->renderer, 0, screen->h, screen->w, screen->h);
 
-  SDL_Rect srcsplayer[24];
-  getsrcs(srcsplayer, 7); // Replace this with a more generic func getsrcs
   SDL_Rect dstplayer = { player->x, player->y, player->w, player->h };
 
-  SDL_Rect srcsobjs[4];
-  getsrcs(srcsobjs, 4); // TODO: Make it so getsrcs only runs on initialization
 
   SDL_Rect dstblock = { screen->w / 2.0f - screen->tile, blocks[0].y, tile, tile };
   blocks[0].rect = dstblock;
@@ -266,9 +290,9 @@ void render(GameState *state) {
   SDL_Rect srcground = { 0, 16, 32, 32 };
   SDL_Rect dstground = { 0, screen->h - tile * 2, tile * 2, tile * 2 };
 
-  SDL_RenderCopy(state->renderer, sheets->mario, &srcsplayer[player->frame], &dstplayer);
-  SDL_RenderCopy(state->renderer, sheets->objs, &srcsobjs[1], &blocks[0].rect);
-  SDL_RenderCopy(state->renderer, sheets->objs, &srcsobjs[1], &blocks[1].rect);
+  SDL_RenderCopy(state->renderer, sheets->mario, &sheets->srcmario[player->frame], &dstplayer);
+  SDL_RenderCopy(state->renderer, sheets->objs, &sheets->srcsobjs[1], &blocks[0].rect);
+  SDL_RenderCopy(state->renderer, sheets->objs, &sheets->srcsobjs[1], &blocks[1].rect);
   for (u_int i = 0; i < 6; i++) {
     state->objs[i] = dstground;
     SDL_RenderCopy(state->renderer, sheets->objs, &srcground, &dstground);
@@ -327,6 +351,7 @@ int main(void) {
   state.player = player;
   initTextures(&state);
   initObjs(&state);
+  // TODO: Modularize the game, start by making everthing realted to init above
 
   while (true) {
     handleEvents(&state);
