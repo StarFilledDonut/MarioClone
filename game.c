@@ -14,17 +14,32 @@
 #define GRAVITY 0.8f
 
 typedef struct {
-  float x, y;
+  float x, y, dx, dy;
   u_int w, h;
-  float dx, dy;
-  _Bool tall, onSurface, jumpPressed;
+  _Bool tall, onSurface, holdingJump;
   u_short frame;
 } Character;
+
+typedef enum {
+  NOTHING,
+  COINS,
+  MUSHROOM,
+  FIRE_FLOWER,
+  EMPTY
+} ItemType;
+
+typedef struct {
+  float x, y, dx, dy; // NOTES: Do not make him come out of the block with dy, it will break the collision
+  _Bool isFree;
+} Item;
 
 typedef struct {
   SDL_Rect rect;
   float y, initY;
   _Bool gotHit;
+  ItemType type;
+  Item item;
+  u_int frame;
 } Block;
 
 typedef struct {
@@ -34,8 +49,11 @@ typedef struct {
 typedef struct {
   SDL_Texture *mario;
   SDL_Texture *objs;
-  SDL_Rect srcmario[7];
+  SDL_Texture *items;
+  SDL_Texture *effects;
+  SDL_Rect srcmario[10];
   SDL_Rect srcsobjs[4];
+  SDL_Rect srcitems[10];
 } Sheets;
 
 typedef struct {
@@ -62,11 +80,14 @@ void quit(GameState *state, u_short __status) {
   exit(__status);
 }
 
-// Remember to free the str after using it
+// Remember to free the str after using it, needs state in case of an allocation error
 // @return char * path + file
-char *catpath(const char *path, const char *file) {
+char *catpath(GameState *state, const char *path, const char *file) {
   char *result = malloc(strlen(path) + strlen(file) + 1);
-  if (result == NULL) return NULL; // Search for "handling memory allocation failure"
+  if (result == NULL) {
+    printf("Could not allocate memory for the file path\n");
+    quit(state, 1);
+  }
   strcpy(result, path);
   strcat(result, file);
   return result;
@@ -76,8 +97,8 @@ char *catpath(const char *path, const char *file) {
 void handleEvents(GameState *state) {
   SDL_Event event;
   Character *player = &state->player;
-  const u_short JUMP_FORCE = 15, MAX_SPEED = 7;
-  const float SPEED = 0.1f, FRIC = 0.85f;
+  const u_short JUMP_FORCE = 20, MAX_JUMP = 20, MAX_SPEED = 7;
+  const float SPEED = 0.2f, FRIC = 0.85f;
 
   if (player->dy < 0) player->frame = 5;
   else if (!player->dy && player->frame == 5) player->frame = 0;
@@ -93,22 +114,13 @@ void handleEvents(GameState *state) {
             quit(state, 0);
             break;
           case SDLK_SPACE:
-            printf("KEYDOWN:\njumpPressed = %d\n", player->jumpPressed);
             break;
         }
       case SDL_KEYUP:
         if (event.key.repeat == 0) {
-          switch (event.key.keysym.sym) {
-            case SDLK_SPACE:
-              player->jumpPressed = false;
-              break;
-            case SDLK_w:
-              player->jumpPressed = false;
-              break;
-            case SDLK_UP:
-              player->jumpPressed = false;
-              break;
-          }
+          const int keyup = event.key.keysym.sym;
+          if (keyup == SDLK_SPACE || keyup == SDLK_w || keyup == SDLK_UP)
+            player->holdingJump = false;
         }
     }
   }
@@ -126,11 +138,12 @@ void handleEvents(GameState *state) {
       if (fabsf(player->dx) < 0.1f) player->dx = 0;
     }
   }
-  if (!player->jumpPressed && player->onSurface && !player->dy && (
+  if (
+    !player->holdingJump && player->onSurface && !player->dy && (
     key[SDL_SCANCODE_SPACE] || key[SDL_SCANCODE_W] || key[SDL_SCANCODE_UP]
   )) {
-    player->dy -= JUMP_FORCE;
-    player->jumpPressed = true;
+    player->dy -= JUMP_FORCE; // TODO: Implement a MAX_HEIGHT that the jump can make
+    player->holdingJump = true; // NOTES: Only do this when player.dy == MAX_HEIGHT
   }
 }
 
@@ -153,6 +166,7 @@ void handleCollision(
     SDL_Rect block = blocks[i].rect;
     float bx = block.x, by = blocks[i].y;
     _Bool *gotHit = &blocks[i].gotHit;
+    Item *item = &blocks[i].item;
     const u_int bw = block.w, bh = block.h;
     const _Bool collision = (*px < bx + bw && *px + pw > bx)
       && (*py < by + bh && *py + ph > by);
@@ -166,8 +180,19 @@ void handleCollision(
         onBlock = true;
       }
       else if (dy < 0) {
+        const ItemType inside = blocks[i].type;
         *py = by + bh;
-        *gotHit = true;
+        if ((!player->tall && inside == NOTHING)
+          || inside != EMPTY && inside != NOTHING) {
+          *gotHit = true;
+        }
+        // TODO: Add a mechanic to type == COINS
+        // to only become empty after 10 coins/hits
+        if (inside != NOTHING) {
+          item->isFree = true;
+          blocks[i].type = EMPTY;
+          blocks[i].frame = 2;
+        }
       }
       if (dx) player->dx = 0;
       else player->dy = 0;
@@ -178,6 +203,11 @@ void handleCollision(
       if (by + bh > bjump) blocks[i].y -= BLOCK_SPEED;
       else *gotHit = false;
     } else if (by != initY) blocks[i].y += BLOCK_SPEED;
+    if (item->isFree) {
+      const float iy = initY - state->screen.tile;
+      if (item->y > iy) item->y -= BLOCK_SPEED;
+      printf("item->y = %f\niy = %f\n", item->y, iy);
+    }
   }
   for (u_int i = 0; i < objslength; i++) {
     SDL_Rect obj = state->objs[i];
@@ -215,39 +245,54 @@ void getsrcs(SDL_Rect srcs[], u_short frames) {
 // Apply physics to the player, the objects, and the eneyms.
 void physics(GameState *state) {
   Character *player = &state->player;
+  const float MAX_GRAVITY = 20;
   player->x += player->dx;
   const u_int blength = 2; // NOTES: Update these accordingly
   const u_int objsLength = 6; // NOTES: Update these accordingly
-  if (player->dx) handleCollision(player->dx, 0, state, blength, objsLength);
-  player->dy += GRAVITY;
+  // NOTES: Always call this func 2 times, or else speed will be inconsistent
+  handleCollision(player->dx, 0, state, blength, objsLength);
+  if (player->dy < MAX_GRAVITY) player->dy += GRAVITY;
   player->y += player->dy;
   handleCollision(0, player->dy, state, blength, objsLength);
+  // NOTES: Placeholder code below, prevent from falling into endeless pit
+  if (player->y - player->h > state->screen.h) {
+    player->y = (float) 0 - player->h;
+    player->x = state->screen.h / 2.0f - player->w;
+  }
 }
 
 // Initialize the textures on the state.sheets, as well as the srcs.
 void initTextures(GameState *state) {
-  Sheets *sheets = &state->sheets;
   const char *path = "../../../../game/assets/sprites/";
-  const char *mode = "r";
-  char *marioFile = catpath(path, "mario.png");
-  char *objsFile = catpath(path, "objs.png");
+  Sheets *sheets = &state->sheets;
+  char *files[] = {
+    "mario.png",
+    "objs.png",
+    "items.png",
+    "effects.png"
+  };
 
-  SDL_RWops *marioRW = SDL_RWFromFile(marioFile, mode);
-  SDL_RWops *objsRW = SDL_RWFromFile(objsFile, mode);
-  if (!marioRW || !objsRW) {
-    printf("Could not load the sprites! SDL_Error: %s\n", SDL_GetError());
-    quit(state, 1);
+  for (u_int i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+    char *filePath = catpath(state, path, files[i]);
+    SDL_RWops *fileRW = SDL_RWFromFile(filePath, "r");
+    if (!fileRW) {
+      printf("Could not load the sprites! SDL_Error: %s\n", SDL_GetError());
+      quit(state, 1);
+    }
+    SDL_Texture *fileTexture = IMG_LoadTextureTyped_RW(state->renderer, fileRW, 1, "PNG");
+    if (i == 0) sheets->mario = fileTexture;
+    else if (i == 1) sheets->objs = fileTexture;
+    else if (i == 2) sheets->items = fileTexture;
+    else if (i == 3) sheets->effects = fileTexture;
+    if (!fileTexture) {
+      printf("Could not place the sprites! SDL_Error: %s\n", SDL_GetError());
+      quit(state, 1);
+    }
+    free(filePath);
   }
-  free(marioFile);
-  free(objsFile);
-  sheets->mario = IMG_LoadTextureTyped_RW(state->renderer, marioRW, 1, "PNG");
-  sheets->objs = IMG_LoadTextureTyped_RW(state->renderer, objsRW, 1, "PNG");
-  if (!sheets->mario || !sheets->objs) {
-    printf("Could not place the sprites! SDL_Error: %s\n", SDL_GetError());
-    quit(state, 1);
-  }
-  getsrcs(sheets->srcmario, 7);
-  getsrcs(sheets->srcsobjs, 4);
+  getsrcs(state->sheets.srcmario, 7);
+  getsrcs(state->sheets.srcsobjs, 4);
+  getsrcs(state->sheets.srcitems, 6);
 }
 
 void initObjs(GameState *state) {
@@ -257,6 +302,11 @@ void initObjs(GameState *state) {
   blocks[0].y = screen->h - tile * 5;
   blocks[0].initY = blocks[0].y;
   blocks[0].gotHit = false;
+  blocks[0].type = MUSHROOM;
+  blocks[0].item.x = 0;
+  blocks[0].item.y = blocks[0].initY;
+  blocks[0].item.isFree = false;
+  blocks[0].frame = 3;
 
   blocks[1].y = screen->h - tile * 3;
   blocks[1].rect.w = tile;
@@ -265,6 +315,7 @@ void initObjs(GameState *state) {
   blocks[1].rect.y = blocks[1].y;
   blocks[1].initY = blocks[1].y;
   blocks[1].gotHit = false;
+  blocks[1].type = NOTHING;
 }
 
 // Renders to the screen
@@ -282,16 +333,18 @@ void render(GameState *state) {
   SDL_RenderDrawLine(state->renderer, 0, screen->h, screen->w, screen->h);
 
   SDL_Rect dstplayer = { player->x, player->y, player->w, player->h };
-
-
   SDL_Rect dstblock = { screen->w / 2.0f - screen->tile, blocks[0].y, tile, tile };
   blocks[0].rect = dstblock;
+  const float itemY = blocks[0].item.isFree ? blocks[0].item.y : blocks[0].y;
+  SDL_Rect dstitem = { blocks[0].item.x + dstblock.x, itemY, tile, tile };
 
   SDL_Rect srcground = { 0, 16, 32, 32 };
   SDL_Rect dstground = { 0, screen->h - tile * 2, tile * 2, tile * 2 };
 
   SDL_RenderCopy(state->renderer, sheets->mario, &sheets->srcmario[player->frame], &dstplayer);
-  SDL_RenderCopy(state->renderer, sheets->objs, &sheets->srcsobjs[1], &blocks[0].rect);
+  // NOTES: First render the items, then the blocks
+  SDL_RenderCopy(state->renderer, sheets->items, &sheets->srcitems[0], &dstitem);
+  SDL_RenderCopy(state->renderer, sheets->objs, &sheets->srcsobjs[blocks[0].frame], &blocks[0].rect);
   SDL_RenderCopy(state->renderer, sheets->objs, &sheets->srcsobjs[1], &blocks[1].rect);
   for (u_int i = 0; i < 6; i++) {
     state->objs[i] = dstground;
