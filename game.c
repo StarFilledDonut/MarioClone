@@ -17,7 +17,7 @@ typedef struct {
   float x, y;
   u_int w, h;
   float dx, dy;
-  _Bool tall;
+  _Bool tall, onSurface;
   u_short frame;
 } Character;
 
@@ -39,7 +39,7 @@ typedef struct {
 typedef struct {
   SDL_Window *window;
   SDL_Renderer *renderer;
-  Block blocks[2];
+  Block blocks[20];
   SDL_Rect objs[20];
   Sheets sheets;
   Screen screen;
@@ -71,7 +71,7 @@ char *catpath(const char *path, const char *file) {
 }
 
 // Takes care of all the events of the game.
-void processEvents(GameState *state) {
+void handleEvents(GameState *state) {
   SDL_Event event;
   Character *player = &state->player;
   const u_short JUMP_FORCE = 15, MAX_SPEED = 7;
@@ -112,66 +112,84 @@ void processEvents(GameState *state) {
     }
   }
   if (key[SDL_SCANCODE_SPACE] || key[SDL_SCANCODE_W] || key[SDL_SCANCODE_UP]) {
-    if (!player->dy) player->dy -= JUMP_FORCE;
+    if (player->onSurface && !player->dy) player->dy -= JUMP_FORCE;
   }
 }
 
-void handleCollision(GameState *state, u_int length, float dx, float dy) {
+void handleCollision(float dx, float dy, GameState *state, u_int blength, u_int objslength) {
   Character *player = &state->player;
   Block *blocks = state->blocks;
   const u_int pw = player->w, ph = player->h;
+  _Bool onBlock, onObj;
   float *px = &player->x, *py = &player->y;
 
-  for (u_int i = 0; i < length; i++) {
+  for (u_int i = 0; i < blength; i++) {
     SDL_Rect block = blocks[i].rect;
     float bx = block.x, by = blocks[i].y;
     _Bool *gotHit = &blocks[i].gotHit;
     const u_int bw = block.w, bh = block.h;
-    const _Bool collX = *px < bx + bw && *px + pw > bx;
-    const _Bool collY = *py < by + bh && *py + ph > by;
+    const _Bool collision = (*px < bx + bw && *px + pw > bx)
+      && (*py < by + bh && *py + ph > by);
     const float BLOCK_SPEED = 1.5f, initY = blocks[i].initY;
 
-    if (collX && collY) {
+    if (collision) {
       if (dx > 0) *px = bx - pw;
       else if (dx < 0) *px = bx + bw;
-      else if (dy > 0) *py = by - ph;
+      else if (dy > 0) {
+        *py = by - ph;
+        onBlock = true;
+      }
       else if (dy < 0) {
         *py = by + bh;
         *gotHit = true;
       }
       if (dx) player->dx = 0;
       else player->dy = 0;
-      printf("gotHit = %s\n", *gotHit ? "True" : "False");
-    }
+      break;
+    } else onBlock = false;
     if (*gotHit) {
       const float bjump = initY + bh - state->screen.tile / 4.0f;
       if (by + bh > bjump) blocks[i].y -= BLOCK_SPEED;
       else *gotHit = false;
     } else if (by != initY) blocks[i].y += BLOCK_SPEED;
   }
-}
+  for (u_int i = 0; i < objslength; i++) {
+    SDL_Rect obj = state->objs[i];
+    const _Bool collision = (*px < obj.x + obj.w && *px + pw > obj.x)
+      && (*py < obj.y + obj.h && *py + ph > obj.y);
 
-void physics(GameState *state) {
-  // if (!(state->player.dy && state->player.dx)) return;
-  Character *player = &state->player;
-  const float GROUND = state->screen.h - state->screen.tile * 2;
-  player->x += player->dx;
-  const u_int blocksLength = 2;
-  handleCollision(state, blocksLength, player->dx, 0);
-  // TODO: Not run this handle collision when !player->dx
-  // I must create a separate physiscs func for non player related things for this optimization to work.
-  player->y += player->dy;
-  handleCollision(state, blocksLength, 0, player->dy);
-  // This piece of code WILL be replaced
-  if (player->y + player->h < GROUND) player->dy += GRAVITY;
-  else if (player->dy) {
-    player->frame = 0;
-    player->dy = 0;
-    player->y = GROUND - player->h;
+    // ERROR: This collision is somehow only working on the right side objs
+    if (collision) {
+      if (dx > 0) *px = obj.x - pw;
+      else if (dx < 0) *px = obj.x + obj.w;
+      else if (dy > 0) {
+        *py = obj.y - ph;
+        onObj = true;
+      }
+      else if (dy < 0) *py = obj.y + obj.h;
+      if (dx) player->dx = 0;
+      else player->dy = 0;
+      break;
+    } else {
+      onObj = false;
+    }
   }
+  player->onSurface = onBlock || onObj;
 }
 
-void initializeTextures(GameState *state) {
+// Apply physics to the player, the objects, and the eneyms.
+void physics(GameState *state) {
+  Character *player = &state->player;
+  player->x += player->dx;
+  const u_int blength = 2; // NOTES: Update these accordingly
+  const u_int objsLength = 6; // NOTES: Update these accordingly
+  if (player->dx) handleCollision(player->dx, 0, state, blength, objsLength);
+  player->dy += GRAVITY;
+  player->y += player->dy;
+  handleCollision(0, player->dy, state, blength, objsLength);
+}
+
+void initTextures(GameState *state) {
   Sheets *sheets = &state->sheets;
   const char *path = "../../../../game/assets/sprites/";
   const char *mode = "r";
@@ -194,7 +212,7 @@ void initializeTextures(GameState *state) {
   }
 }
 
-void initializeObjs(GameState *state) {
+void initObjs(GameState *state) {
   Block *blocks = state->blocks;
   Screen *screen = &state->screen;
   u_int tile = screen->tile;
@@ -242,7 +260,6 @@ void render(GameState *state) {
   SDL_Rect srcsobjs[4];
   getsrcs(srcsobjs, 4); // TODO: Make it so getsrcs only runs on initialization
 
-  // Only refresh the blocks who may be interacted with
   SDL_Rect dstblock = { screen->w / 2.0f - screen->tile, blocks[0].y, tile, tile };
   blocks[0].rect = dstblock;
 
@@ -252,17 +269,15 @@ void render(GameState *state) {
   SDL_RenderCopy(state->renderer, sheets->mario, &srcsplayer[player->frame], &dstplayer);
   SDL_RenderCopy(state->renderer, sheets->objs, &srcsobjs[1], &blocks[0].rect);
   SDL_RenderCopy(state->renderer, sheets->objs, &srcsobjs[1], &blocks[1].rect);
-  // Temporary ground
-  for (u_short i = 0; i < 6; i++) {
+  for (u_int i = 0; i < 6; i++) {
+    state->objs[i] = dstground;
     SDL_RenderCopy(state->renderer, sheets->objs, &srcground, &dstground);
     dstground.x += dstground.w;
   }
 
-  SDL_RenderPresent(state->renderer); // Presents the drawings made
+  SDL_RenderPresent(state->renderer);
 }
 
-// REPLACE THIS WITH A SPRITESHEET ANIMATION FRAMES FUNC
-// This may still be used for static pictures though
 int main(void) {
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
     printf("Could not initialize SDL! SDL_Error: %s\n", SDL_GetError());
@@ -307,13 +322,14 @@ int main(void) {
   player.dx = 0;
   player.dy = 0;
   player.tall = false;
+  player.onSurface = true;
   player.frame = 0;
   state.player = player;
-  initializeTextures(&state);
-  initializeObjs(&state);
+  initTextures(&state);
+  initObjs(&state);
 
   while (true) {
-    processEvents(&state);
+    handleEvents(&state);
     render(&state);
     physics(&state);
   }
