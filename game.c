@@ -16,7 +16,7 @@
 typedef struct {
   float x, y, dx, dy;
   u_int w, h;
-  _Bool tall, onSurface, holdingJump;
+  _Bool tall, onSurface, holdingJump, onJump;
   u_short frame;
 } Character;
 
@@ -94,16 +94,138 @@ char *catpath(GameState *state, const char *path, const char *file) {
   return result;
 }
 
+// Get the srcs of the specific frames of a spritesheet
+void getsrcs(SDL_Rect srcs[], u_short frames) {
+  u_int w = 16, h = 16, x = 16, y = 0;
+  for (u_short i = 0; i < frames; i++) {
+    srcs[i].x = i * x;
+    srcs[i].y = y;
+    srcs[i].w = w;
+    srcs[i].h = h;
+  }
+}
+
+// Initialize the textures on the state.sheets, as well as the srcs.
+void initTextures(GameState *state) {
+  const char *path = "./assets/sprites/";
+  Sheets *sheets = &state->sheets;
+  char *files[] = {
+    "mario.png",
+    "objs.png",
+    "items.png",
+    "effects.png"
+  };
+
+  for (u_int i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+    char *filePath = catpath(state, path, files[i]);
+    SDL_RWops *fileRW = SDL_RWFromFile(filePath, "r");
+    if (!fileRW) {
+      printf("Could not load the sprites! SDL_Error: %s\n", SDL_GetError());
+      quit(state, 1);
+    }
+    SDL_Texture *fileTexture = IMG_LoadTextureTyped_RW(state->renderer, fileRW, 1, "PNG");
+    if (i == 0) sheets->mario = fileTexture;
+    else if (i == 1) sheets->objs = fileTexture;
+    else if (i == 2) sheets->items = fileTexture;
+    else if (i == 3) sheets->effects = fileTexture;
+    if (!fileTexture) {
+      printf("Could not place the sprites! SDL_Error: %s\n", SDL_GetError());
+      quit(state, 1);
+    }
+    free(filePath);
+  }
+  getsrcs(state->sheets.srcmario, 7);
+  getsrcs(state->sheets.srcsobjs, 4);
+  getsrcs(state->sheets.srcitems, 6);
+}
+
+void initObjs(GameState *state) {
+  Block *blocks = state->blocks;
+  Screen *screen = &state->screen;
+  u_int tile = screen->tile;
+  blocks[0].y = screen->h - tile * 5;
+  blocks[0].initY = blocks[0].y;
+  blocks[0].gotHit = false;
+  blocks[0].type = MUSHROOM;
+  blocks[0].item.x = 0;
+  blocks[0].item.y = blocks[0].initY;
+  blocks[0].item.isFree = false;
+  blocks[0].frame = 3;
+
+  blocks[1].y = screen->h - tile * 3;
+  blocks[1].rect.w = tile;
+  blocks[1].rect.h = tile;
+  blocks[1].rect.x = tile;
+  blocks[1].rect.y = blocks[1].y;
+  blocks[1].initY = blocks[1].y;
+  blocks[1].gotHit = false;
+  blocks[1].type = NOTHING;
+}
+
+void initGame(GameState *state) {
+  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    printf("Could not initialize SDL! SDL_Error: %s\n", SDL_GetError());
+    exit(1);
+  }
+  if (IMG_Init(IMG_INIT_PNG) < 0) {
+    printf("Could not initialize IMG! IMG_Error: %s\n", SDL_GetError());
+    exit(1);
+  }
+  state->screen.w = 640; // For later screen resizing
+  state->screen.h = 480;
+  state->screen.tile = 64;
+  state->screen.dt = 0; // DeltaTime
+
+  SDL_Window *window = SDL_CreateWindow(
+    "Mario copy",
+    SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+    state->screen.w, state->screen.h,
+    SDL_WINDOW_SHOWN
+  );
+  if (!window) {
+    printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
+    SDL_Quit();
+    exit(1);
+  }
+  state->window = window;
+  
+  SDL_Renderer *renderer = SDL_CreateRenderer(
+    window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED
+  );
+  if (!renderer) {
+    printf("Renderer could not be created! SDL_Error: %s\n", SDL_GetError());
+    quit(state, 1);
+  }
+  state->renderer = renderer;
+
+  Character player;
+  player.w = 64;
+  player.h = 64;
+  player.x = state->screen.w / 2.0f - player.w;
+  player.y = state->screen.h - player.h - state->screen.tile * 2;
+  player.dx = 0;
+  player.dy = 0;
+  player.tall = false;
+  player.onSurface = true;
+  player.holdingJump = false;
+  player.onJump = false;
+  player.frame = 0;
+  state->player = player;
+  initTextures(state);
+  initObjs(state);
+}
+
 // Takes care of all the events of the game.
 void handleEvents(GameState *state) {
   SDL_Event event;
   Character *player = &state->player;
-  const u_short JUMP_FORCE = 20, MAX_JUMP = 20, MAX_SPEED = 7;
-  const float SPEED = 0.2f, FRIC = 0.85f;
+  const short MAX_JUMP = -15, MAX_SPEED = 7;
+  const float JUMP_FORCE = 2.5f, SPEED = 0.2f, FRIC = 0.85f;
 
   if (player->dy < 0) player->frame = 5;
   else if (player->onSurface && player->frame == 5)
     player->frame = 0;
+  if (player->onSurface) player->onJump = false;
 
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
@@ -115,14 +237,15 @@ void handleEvents(GameState *state) {
           case SDLK_ESCAPE:
             quit(state, 0);
             break;
-          case SDLK_SPACE:
-            break;
         }
       case SDL_KEYUP:
         if (event.key.repeat == 0) {
-          const int keyup = event.key.keysym.sym;
-          if (keyup == SDLK_SPACE || keyup == SDLK_w || keyup == SDLK_UP)
+          const SDL_Keycode keyup = event.key.keysym.sym;
+          if (keyup == SDLK_SPACE || keyup == SDLK_w || keyup == SDLK_UP) {
+            if (player->dy < 0) player->dy *= FRIC;
             player->holdingJump = false;
+            player->onJump = false;
+          }
         }
     }
   }
@@ -141,12 +264,17 @@ void handleEvents(GameState *state) {
     }
   }
   if (
-    !player->holdingJump && player->onSurface && !player->dy && (
+    ((!player->holdingJump && player->onSurface)
+    || (!player->onSurface && player->onJump)) && (
     key[SDL_SCANCODE_SPACE] || key[SDL_SCANCODE_W] || key[SDL_SCANCODE_UP]
   )) {
-    player->dy -= JUMP_FORCE; // TODO: Implement a MAX_HEIGHT that the jump can make
-    player->holdingJump = true; // NOTES: Only do this when player.dy == MAX_HEIGHT
+    player->dy -= JUMP_FORCE;
+    if (player->dy < MAX_JUMP) player->onJump = false;
+    else player->onJump = true;
+    player->holdingJump = true;
   }
+  // NOTES: TEMPORARY CEILING
+  if (player->y < 0) player->y = 0;
 }
 
 // Handles the collision a axis per time, call this first with dx only,
@@ -215,7 +343,6 @@ void handleCollision(
     const _Bool collision = (*px < obj.x + obj.w && *px + pw > obj.x)
       && (*py < obj.y + obj.h && *py + ph > obj.y);
 
-    // ERROR: This collision is somehow only working on the right side objs
     if (collision) {
       if (dx > 0) *px = obj.x - pw;
       else if (dx < 0) *px = obj.x + obj.w;
@@ -230,17 +357,6 @@ void handleCollision(
     } else onObj = false;
   }
   player->onSurface = onBlock || onObj;
-}
-
-// Get the srcs of the specific frames of a spritesheet
-void getsrcs(SDL_Rect srcs[], u_short frames) {
-  u_int w = 16, h = 16, x = 16, y = 0;
-  for (u_short i = 0; i < frames; i++) {
-    srcs[i].x = i * x;
-    srcs[i].y = y;
-    srcs[i].w = w;
-    srcs[i].h = h;
-  }
 }
 
 // Apply physics to the player, the objects, and the eneyms.
@@ -273,63 +389,6 @@ void physics(GameState *state) {
     player->y = (float) 0 - player->h;
     player->x = state->screen.h / 2.0f - player->w;
   }
-}
-
-// Initialize the textures on the state.sheets, as well as the srcs.
-void initTextures(GameState *state) {
-  const char *path = "./assets/sprites/";
-  Sheets *sheets = &state->sheets;
-  char *files[] = {
-    "mario.png",
-    "objs.png",
-    "items.png",
-    "effects.png"
-  };
-
-  for (u_int i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
-    char *filePath = catpath(state, path, files[i]);
-    SDL_RWops *fileRW = SDL_RWFromFile(filePath, "r");
-    if (!fileRW) {
-      printf("Could not load the sprites! SDL_Error: %s\n", SDL_GetError());
-      quit(state, 1);
-    }
-    SDL_Texture *fileTexture = IMG_LoadTextureTyped_RW(state->renderer, fileRW, 1, "PNG");
-    if (i == 0) sheets->mario = fileTexture;
-    else if (i == 1) sheets->objs = fileTexture;
-    else if (i == 2) sheets->items = fileTexture;
-    else if (i == 3) sheets->effects = fileTexture;
-    if (!fileTexture) {
-      printf("Could not place the sprites! SDL_Error: %s\n", SDL_GetError());
-      quit(state, 1);
-    }
-    free(filePath);
-  }
-  getsrcs(state->sheets.srcmario, 7);
-  getsrcs(state->sheets.srcsobjs, 4);
-  getsrcs(state->sheets.srcitems, 6);
-}
-
-void initObjs(GameState *state) {
-  Block *blocks = state->blocks;
-  Screen *screen = &state->screen;
-  u_int tile = screen->tile;
-  blocks[0].y = screen->h - tile * 5;
-  blocks[0].initY = blocks[0].y;
-  blocks[0].gotHit = false;
-  blocks[0].type = MUSHROOM;
-  blocks[0].item.x = 0;
-  blocks[0].item.y = blocks[0].initY;
-  blocks[0].item.isFree = false;
-  blocks[0].frame = 3;
-
-  blocks[1].y = screen->h - tile * 3;
-  blocks[1].rect.w = tile;
-  blocks[1].rect.h = tile;
-  blocks[1].rect.x = tile;
-  blocks[1].rect.y = blocks[1].y;
-  blocks[1].initY = blocks[1].y;
-  blocks[1].gotHit = false;
-  blocks[1].type = NOTHING;
 }
 
 // Renders to the screen
@@ -366,58 +425,6 @@ void render(GameState *state) {
   }
 
   SDL_RenderPresent(state->renderer);
-}
-
-void initGame(GameState *state) {
-  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
-    printf("Could not initialize SDL! SDL_Error: %s\n", SDL_GetError());
-    exit(1);
-  }
-  if (IMG_Init(IMG_INIT_PNG) < 0) {
-    printf("Could not initialize IMG! IMG_Error: %s\n", SDL_GetError());
-    exit(1);
-  }
-  state->screen.w = 640; // For later screen resizing
-  state->screen.h = 480;
-  state->screen.tile = 64;
-  state->screen.dt = 0; // DeltaTime
-
-  SDL_Window *window = SDL_CreateWindow(
-    "Mario copy",
-    SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-    state->screen.w, state->screen.h,
-    SDL_WINDOW_SHOWN
-  );
-  if (!window) {
-    printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
-    SDL_Quit();
-    exit(1);
-  }
-  state->window = window;
-  
-  SDL_Renderer *renderer = SDL_CreateRenderer(
-    window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED
-  );
-  if (!renderer) {
-    printf("Renderer could not be created! SDL_Error: %s\n", SDL_GetError());
-    quit(state, 1);
-  }
-  state->renderer = renderer;
-
-  Character player;
-  player.w = 64;
-  player.h = 64;
-  player.x = state->screen.w / 2.0f - player.w;
-  player.y = state->screen.h - player.h - state->screen.tile * 2;
-  player.dx = 0;
-  player.dy = 0;
-  player.tall = false;
-  player.onSurface = true;
-  player.holdingJump = false;
-  player.frame = 0;
-  state->player = player;
-  initTextures(state);
-  initObjs(state);
 }
 
 int main(void) {
