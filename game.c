@@ -44,6 +44,7 @@ typedef struct {
 
 typedef struct {
   u_int w, h, tile;
+  float dt;
 } Screen;
 
 typedef struct {
@@ -101,7 +102,8 @@ void handleEvents(GameState *state) {
   const float SPEED = 0.2f, FRIC = 0.85f;
 
   if (player->dy < 0) player->frame = 5;
-  else if (!player->dy && player->frame == 5) player->frame = 0;
+  else if (player->onSurface && player->frame == 5)
+    player->frame = 0;
 
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
@@ -183,7 +185,7 @@ void handleCollision(
         const ItemType inside = blocks[i].type;
         *py = by + bh;
         if ((!player->tall && inside == NOTHING)
-          || inside != EMPTY && inside != NOTHING) {
+          || (inside != EMPTY && inside != NOTHING)) {
           *gotHit = true;
         }
         // TODO: Add a mechanic to type == COINS
@@ -206,7 +208,6 @@ void handleCollision(
     if (item->isFree) {
       const float iy = initY - state->screen.tile;
       if (item->y > iy) item->y -= BLOCK_SPEED;
-      printf("item->y = %f\niy = %f\n", item->y, iy);
     }
   }
   for (u_int i = 0; i < objslength; i++) {
@@ -245,15 +246,28 @@ void getsrcs(SDL_Rect srcs[], u_short frames) {
 // Apply physics to the player, the objects, and the eneyms.
 void physics(GameState *state) {
   Character *player = &state->player;
-  const float MAX_GRAVITY = 20;
-  player->x += player->dx;
+  const float *dt = &state->screen.dt;
+  const float MAX_GRAVITY = 20,
+  TARGET_FRAMERATE = 60,
+  MAX_DELTA_TIME = 1/TARGET_FRAMERATE;
   const u_int blength = 2; // NOTES: Update these accordingly
   const u_int objsLength = 6; // NOTES: Update these accordingly
-  // NOTES: Always call this func 2 times, or else speed will be inconsistent
+
+  if (*dt && *dt < MAX_DELTA_TIME)
+    player->x += player->dx * TARGET_FRAMERATE * *dt;
+  else
+    player->x += player->dx * TARGET_FRAMERATE * MAX_DELTA_TIME;
   handleCollision(player->dx, 0, state, blength, objsLength);
-  if (player->dy < MAX_GRAVITY) player->dy += GRAVITY;
-  player->y += player->dy;
+
+  if (player->dy < MAX_GRAVITY && *dt && *dt < MAX_DELTA_TIME) {
+    player->dy += GRAVITY * TARGET_FRAMERATE * *dt;
+    player->y += player->dy * TARGET_FRAMERATE * *dt;
+  } else {
+    player->dy += GRAVITY * TARGET_FRAMERATE * MAX_DELTA_TIME;
+    player->y += player->dy * TARGET_FRAMERATE * MAX_DELTA_TIME;
+  }
   handleCollision(0, player->dy, state, blength, objsLength);
+
   // NOTES: Placeholder code below, prevent from falling into endeless pit
   if (player->y - player->h > state->screen.h) {
     player->y = (float) 0 - player->h;
@@ -263,7 +277,7 @@ void physics(GameState *state) {
 
 // Initialize the textures on the state.sheets, as well as the srcs.
 void initTextures(GameState *state) {
-  const char *path = "../../../../game/assets/sprites/";
+  const char *path = "./assets/sprites/";
   Sheets *sheets = &state->sheets;
   char *files[] = {
     "mario.png",
@@ -342,7 +356,6 @@ void render(GameState *state) {
   SDL_Rect dstground = { 0, screen->h - tile * 2, tile * 2, tile * 2 };
 
   SDL_RenderCopy(state->renderer, sheets->mario, &sheets->srcmario[player->frame], &dstplayer);
-  // NOTES: First render the items, then the blocks
   SDL_RenderCopy(state->renderer, sheets->items, &sheets->srcitems[0], &dstitem);
   SDL_RenderCopy(state->renderer, sheets->objs, &sheets->srcsobjs[blocks[0].frame], &blocks[0].rect);
   SDL_RenderCopy(state->renderer, sheets->objs, &sheets->srcsobjs[1], &blocks[1].rect);
@@ -355,60 +368,69 @@ void render(GameState *state) {
   SDL_RenderPresent(state->renderer);
 }
 
-int main(void) {
+void initGame(GameState *state) {
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
     printf("Could not initialize SDL! SDL_Error: %s\n", SDL_GetError());
-    return 1;
+    exit(1);
   }
   if (IMG_Init(IMG_INIT_PNG) < 0) {
-    printf("Could not initialize IMG! IMG_Error: %s\n", IMG_GetError);
-    return 1;
+    printf("Could not initialize IMG! IMG_Error: %s\n", SDL_GetError());
+    exit(1);
   }
-  GameState state;
-  state.screen.w = 640; // For later screen resizing
-  state.screen.h = 480;
-  state.screen.tile = 64;
+  state->screen.w = 640; // For later screen resizing
+  state->screen.h = 480;
+  state->screen.tile = 64;
+  state->screen.dt = 0; // DeltaTime
 
   SDL_Window *window = SDL_CreateWindow(
     "Mario copy",
     SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-    state.screen.w, state.screen.h,
+    state->screen.w, state->screen.h,
     SDL_WINDOW_SHOWN
   );
   if (!window) {
     printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
     SDL_Quit();
-    return 1;
+    exit(1);
   }
-  state.window = window;
+  state->window = window;
   
   SDL_Renderer *renderer = SDL_CreateRenderer(
-    window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
+    window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED
   );
   if (!renderer) {
     printf("Renderer could not be created! SDL_Error: %s\n", SDL_GetError());
-    quit(&state, 1);
+    quit(state, 1);
   }
-  state.renderer = renderer;
+  state->renderer = renderer;
 
   Character player;
   player.w = 64;
   player.h = 64;
-  player.x = state.screen.w / 2.0f - player.w;
-  player.y = state.screen.h - player.h - state.screen.tile * 2;
+  player.x = state->screen.w / 2.0f - player.w;
+  player.y = state->screen.h - player.h - state->screen.tile * 2;
   player.dx = 0;
   player.dy = 0;
   player.tall = false;
   player.onSurface = true;
+  player.holdingJump = false;
   player.frame = 0;
-  state.player = player;
-  initTextures(&state);
-  initObjs(&state);
-  // TODO: Modularize the game, start by making everthing realted to init above
+  state->player = player;
+  initTextures(state);
+  initObjs(state);
+}
+
+int main(void) {
+  GameState state;
+  initGame(&state);
+  Uint32 currentTimeT = SDL_GetTicks(), lastTimeT = 0;
 
   while (true) {
+    lastTimeT = currentTimeT;
+    currentTimeT = SDL_GetTicks();
+    state.screen.dt = (currentTimeT - lastTimeT) / 1000.0f;
     handleEvents(&state);
-    render(&state);
     physics(&state);
+    render(&state);
   }
 }
