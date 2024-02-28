@@ -15,8 +15,8 @@
 
 typedef struct {
   float x, y, dx, dy;
-  u_int w, h;
-  _Bool tall, onSurface, holdingJump, onJump;
+  u_short w, h;
+  _Bool tall, firePower, invincible, onSurface, holdingJump, onJump;
   u_short frame;
 } Character;
 
@@ -25,12 +25,14 @@ typedef enum {
   COINS,
   MUSHROOM,
   FIRE_FLOWER,
+  STAR,
   EMPTY
 } ItemType;
 
 typedef struct {
   float x, y, dx, dy; // NOTES: Do not make him come out of the block with dy, it will break the collision
-  _Bool isFree;
+  u_short w, h;
+  _Bool isFree, isVisible;
 } Item;
 
 typedef struct {
@@ -43,7 +45,8 @@ typedef struct {
 } Block;
 
 typedef struct {
-  u_int w, h, tile;
+  u_int w, h;
+  u_short tile;
   float dt;
 } Screen;
 
@@ -142,14 +145,18 @@ void initTextures(GameState *state) {
 void initObjs(GameState *state) {
   Block *blocks = state->blocks;
   Screen *screen = &state->screen;
-  u_int tile = screen->tile;
+  u_short tile = screen->tile;
+  blocks[0].rect.x = screen->w / 2.0f - screen->tile;
   blocks[0].y = screen->h - tile * 5;
   blocks[0].initY = blocks[0].y;
   blocks[0].gotHit = false;
   blocks[0].type = MUSHROOM;
-  blocks[0].item.x = 0;
-  blocks[0].item.y = blocks[0].initY;
+  blocks[0].item.x = blocks[0].rect.x;
+  blocks[0].item.y = blocks[0].y;
+  blocks[0].item.w = tile;
+  blocks[0].item.h = tile;
   blocks[0].item.isFree = false;
+  blocks[0].item.isVisible = true;
   blocks[0].frame = 3;
 
   blocks[1].y = screen->h - tile * 3;
@@ -199,14 +206,16 @@ void initGame(GameState *state) {
   state->renderer = renderer;
 
   Character player;
-  player.w = 64;
-  player.h = 64;
+  player.w = state->screen.tile;
+  player.h = state->screen.tile;
   player.x = state->screen.w / 2.0f - player.w;
   player.y = state->screen.h - player.h - state->screen.tile * 2;
   player.dx = 0;
   player.dy = 0;
   player.tall = false;
-  player.onSurface = true;
+  player.firePower = false;
+  player.invincible = false;
+  player.onSurface = false;
   player.holdingJump = false;
   player.onJump = false;
   player.frame = 0;
@@ -288,21 +297,27 @@ void handleCollision(
 ) {
   Character *player = &state->player;
   Block *blocks = state->blocks;
-  const u_int pw = player->w, ph = player->h;
-  _Bool onBlock, onObj;
+  const u_short pw = player->w, ph = player->h;
+  _Bool onBlock = false, onObj = false;
   float *px = &player->x, *py = &player->y;
 
   for (u_int i = 0; i < blength; i++) {
-    SDL_Rect block = blocks[i].rect;
-    float bx = block.x, by = blocks[i].y;
-    _Bool *gotHit = &blocks[i].gotHit;
     Item *item = &blocks[i].item;
-    const u_int bw = block.w, bh = block.h;
-    const _Bool collision = (*px < bx + bw && *px + pw > bx)
+    _Bool *gotHit = &blocks[i].gotHit, *isVisible = &item->isVisible;
+    const ItemType inside = blocks[i].type;
+    const _Bool isPowerUp = inside >= MUSHROOM && inside <= STAR;
+    float ix = item->x, iy = item->y;
+    // NOTES: Don't use these if inside == NOTHING
+    const u_short iw = item->w, ih = item->h;
+
+    SDL_Rect brect = blocks[i].rect;
+    float bx = brect.x, by = blocks[i].y;
+    const u_short bw = brect.w, bh = brect.h;
+    const _Bool blockCollision = (*px < bx + bw && *px + pw > bx)
       && (*py < by + bh && *py + ph > by);
     const float BLOCK_SPEED = 1.5f, initY = blocks[i].initY;
 
-    if (collision) {
+    if (blockCollision) {
       if (dx > 0) *px = bx - pw;
       else if (dx < 0) *px = bx + bw;
       else if (dy > 0) {
@@ -310,7 +325,6 @@ void handleCollision(
         onBlock = true;
       }
       else if (dy < 0) {
-        const ItemType inside = blocks[i].type;
         *py = by + bh;
         if ((!player->tall && inside == NOTHING)
           || (inside != EMPTY && inside != NOTHING)) {
@@ -318,26 +332,40 @@ void handleCollision(
         }
         // TODO: Add a mechanic to type == COINS
         // to only become empty after 10 coins/hits
-        if (inside != NOTHING) {
+        if (inside != NOTHING && inside != EMPTY && inside != COINS) {
           item->isFree = true;
-          blocks[i].type = EMPTY;
           blocks[i].frame = 2;
         }
       }
       if (dx) player->dx = 0;
       else player->dy = 0;
-      break;
-    } else onBlock = false;
+    }
     if (*gotHit) {
       const float bjump = initY + bh - state->screen.tile / 4.0f;
       if (by + bh > bjump) blocks[i].y -= BLOCK_SPEED;
       else *gotHit = false;
     } else if (by != initY) blocks[i].y += BLOCK_SPEED;
-    if (item->isFree) {
-      const float iy = initY - state->screen.tile;
-      if (item->y > iy) item->y -= BLOCK_SPEED;
+    if (isPowerUp && item->isFree) {
+      if (item->y > initY - state->screen.tile)
+        item->y -= BLOCK_SPEED;
+      else blocks[i].type = EMPTY;
+    }
+    if (*isVisible && item->isFree) {
+      const _Bool itemCollision = (*px < ix + iw && *px + pw > ix)
+        && (*py < iy + ih && *py + ph > iy);
+      if (itemCollision) {
+        *isVisible = false;
+        if (inside == MUSHROOM && !player->firePower)
+          player->tall = true;
+        else if (inside == FIRE_FLOWER) player->firePower = true;
+        else if (inside == STAR) player->invincible = true;
+      }
     }
   }
+  // NOTES: Maybe the best way to implement the items collisions with objs
+  // is to throw this loop in the one above and do it in there,
+  // or when isFree == true add it onto an array and loop it in there in another func
+  // so that why this func is only centered arround player collisions
   for (u_int i = 0; i < objslength; i++) {
     SDL_Rect obj = state->objs[i];
     const _Bool collision = (*px < obj.x + obj.w && *px + pw > obj.x)
@@ -353,8 +381,7 @@ void handleCollision(
       else if (dy < 0) *py = obj.y + obj.h;
       if (dx) player->dx = 0;
       else player->dy = 0;
-      break;
-    } else onObj = false;
+    }
   }
   player->onSurface = onBlock || onObj;
 }
@@ -397,25 +424,27 @@ void render(GameState *state) {
   Sheets *sheets = &state->sheets;
   Screen *screen = &state->screen;
   Block *blocks = state->blocks;
-  u_int tile = screen->tile;
+  u_short tile = screen->tile;
 
   SDL_SetRenderDrawColor(state->renderer,  92,  148,  252,  255);
   SDL_RenderClear(state->renderer);
 
   SDL_SetRenderDrawColor(state->renderer, 255, 0, 0, 255);
+  // NOTES: Delmiter of the bottom of the screen
   SDL_RenderDrawLine(state->renderer, 0, screen->h, screen->w, screen->h);
 
   SDL_Rect dstplayer = { player->x, player->y, player->w, player->h };
-  SDL_Rect dstblock = { screen->w / 2.0f - screen->tile, blocks[0].y, tile, tile };
+  SDL_Rect dstblock = { blocks[0].rect.x, blocks[0].y, tile, tile };
   blocks[0].rect = dstblock;
-  const float itemY = blocks[0].item.isFree ? blocks[0].item.y : blocks[0].y;
-  SDL_Rect dstitem = { blocks[0].item.x + dstblock.x, itemY, tile, tile };
+  Item *item = &blocks[0].item;
+  SDL_Rect dstitem = { item->x, item->y, item->w, item->h };
 
   SDL_Rect srcground = { 0, 16, 32, 32 };
   SDL_Rect dstground = { 0, screen->h - tile * 2, tile * 2, tile * 2 };
 
+  if (item->isVisible)
+    SDL_RenderCopy(state->renderer, sheets->items, &sheets->srcitems[0], &dstitem);
   SDL_RenderCopy(state->renderer, sheets->mario, &sheets->srcmario[player->frame], &dstplayer);
-  SDL_RenderCopy(state->renderer, sheets->items, &sheets->srcitems[0], &dstitem);
   SDL_RenderCopy(state->renderer, sheets->objs, &sheets->srcsobjs[blocks[0].frame], &blocks[0].rect);
   SDL_RenderCopy(state->renderer, sheets->objs, &sheets->srcsobjs[1], &blocks[1].rect);
   for (u_int i = 0; i < 6; i++) {
@@ -430,14 +459,17 @@ void render(GameState *state) {
 int main(void) {
   GameState state;
   initGame(&state);
-  Uint32 currentTimeT = SDL_GetTicks(), lastTimeT = 0;
+  Uint32 currentTime = SDL_GetTicks(), lastTime = 0;
 
   while (true) {
-    lastTimeT = currentTimeT;
-    currentTimeT = SDL_GetTicks();
-    state.screen.dt = (currentTimeT - lastTimeT) / 1000.0f;
+    lastTime = currentTime;
+    currentTime = SDL_GetTicks();
+    state.screen.dt = (currentTime - lastTime) / 1000.0f;
     handleEvents(&state);
     physics(&state);
     render(&state);
   }
 }
+// TODO: Change to tall mario when tall == true
+// TODO: Change to fire Mario when firePower == true
+// TODO: Make mushroom and star to move arround
