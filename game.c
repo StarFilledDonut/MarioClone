@@ -17,16 +17,17 @@
 typedef enum { COINS, MUSHROOM, FIRE_FLOWER, STAR } ItemType;
 typedef enum { NOTHING, FULL, EMPTY } BlockState;
 typedef enum {
-  SNOWY_SPRITE, BRICK_SPRITE, EMPTY_SPRITE, INTERROGATION_SPRITE
+  SHINY_SPRITE, BRICK_SPRITE, EMPTY_SPRITE, INTERROGATION_SPRITE
 } BlockSprite;
+
 
 typedef struct {
   float x, y, dx, dy;
   u_short w, h;
-  _Bool tall, firePower, invincible, onSurface, holdingJump, onJump,
-        facingRight, isSquatting;
+  _Bool tall, firePower, invincible, transforming, onSurface, holdingJump,
+        onJump, facingRight, isSquatting;
   u_short frame;
-} Character;
+} Player;
 
 typedef struct {
   float x, y, dx, dy;
@@ -45,9 +46,10 @@ typedef struct {
 } Block;
 
 typedef struct {
-  u_int w, h;
+  Uint32 w, h, timerStart;
   u_short tile, targetFps;
-  float dt;
+  float deltaTime;
+  _Bool timerOn;
 } Screen;
 
 typedef struct {
@@ -55,7 +57,7 @@ typedef struct {
   SDL_Texture *objs;
   SDL_Texture *items;
   SDL_Texture *effects;
-  SDL_Rect srcmario[22];
+  SDL_Rect srcmario[30];
   SDL_Rect srcsobjs[4];
   SDL_Rect srcitems[20];
 } Sheets;
@@ -65,10 +67,10 @@ typedef struct {
   SDL_Renderer *renderer;
   Block blocks[20];
   SDL_Rect objs[20];
-  u_int objsLength, blocksLenght;
+  Uint32 objsLength, blocksLenght;
   Sheets sheets;
   Screen screen;
-  Character player;
+  Player player;
 } GameState;
 
 /* Destroy everything that was initialized from SDL then exit the program.
@@ -77,7 +79,10 @@ typedef struct {
  */
 void quit(GameState *state, u_short __status) {
   Sheets *sheets = &state->sheets;
+  if (sheets->effects) SDL_DestroyTexture(sheets->effects);
   if (sheets->mario) SDL_DestroyTexture(sheets->mario);
+  if (sheets->objs) SDL_DestroyTexture(sheets->objs);
+  if (sheets->items) SDL_DestroyTexture(sheets->items);
   if (state->renderer) SDL_DestroyRenderer(state->renderer);
   if (state->window) SDL_DestroyWindow(state->window);
   IMG_Quit();
@@ -108,15 +113,16 @@ void getsrcs(
   const char row,
   const u_short w,
   const u_short h,
+  u_short x,
   u_short y
 ) {
   const u_short tile = 16;
-  u_int x = tile;
+  if (!x) x = tile;
   if (!y) y = tile * (row - 1);
   u_short j = startIndex;
   for (u_short i = 0; i < frames; i++) {
     SDL_Rect *frame = &srcs[j];
-    frame->x = x * i;
+    frame->x = frames != 1 ? x * i : x;
     frame->y = y;
     frame->w = tile * w;
     frame->h = tile * h;
@@ -130,7 +136,7 @@ void initTextures(GameState *state) {
   Sheets *sheets = &state->sheets;
   char *files[] = {"mario.png", "objs.png", "items.png", "effects.png"};
 
-  for (u_int i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
+  for (Uint32 i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
     char *filePath = catpath(state, path, files[i]);
     SDL_RWops *fileRW = SDL_RWFromFile(filePath, "r");
     if (!fileRW) {
@@ -149,28 +155,29 @@ void initTextures(GameState *state) {
     }
     free(filePath);
   }
-  getsrcs(sheets->srcmario, 7, 0, 1, 1, 1, false);
-  getsrcs(sheets->srcmario, 6, 7, 2, 1, 2, 0); // Tall Mario
+  getsrcs(sheets->srcmario, 7, 0, 1, 1, 1, false, false); // Small Mario
+  getsrcs(sheets->srcmario, 6, 7, 2, 1, 2, false, 0); // Tall Mario
   SDL_Rect *tallSquatting = &sheets->srcmario[13];
   tallSquatting->x = 16 * 6;
   tallSquatting->y = 16 + 16 / 2;
   tallSquatting->w = 16;
   tallSquatting->h = 16 + 16 / 2;
-  getsrcs(sheets->srcmario, 6, 14, 2, 1, 2, 32 * 2 + 16); // Fire Mario
+  getsrcs(sheets->srcmario, 6, 14, 2, 1, 2, false, 32 * 2 + 16); // Fire Mario
   SDL_Rect *fireSquatting = &sheets->srcmario[20];
   fireSquatting->x = 16 * 6;
   fireSquatting->y = tallSquatting->y + 32 * 2;
   fireSquatting->w = 16;
   fireSquatting->h = 16 + 16 / 2;
-  getsrcs(sheets->srcsobjs, 4, 0, 1, 1, 1, false);
-  getsrcs(sheets->srcitems, 6, 0, 1, 1, 1, false);
+  getsrcs(sheets->srcmario, 6, 21, 2, 1, 2, false, 48); // Mid transformation
+  getsrcs(sheets->srcsobjs, 4, 0, 1, 1, 1, false, false);
+  getsrcs(sheets->srcitems, 6, 0, 1, 1, 1, false, false);
 }
 
 // This function alone does not create interactive blocks, make sure
 // to create a dstrect in the render function to work
 void createBlock(GameState *state, int x, int y,
                  BlockState tBlock, ItemType tItem) {
-  const u_int index = state->blocksLenght;
+  const Uint32 index = state->blocksLenght;
   BlockSprite sprite;
   if (tBlock == NOTHING || tItem == COINS) sprite = BRICK_SPRITE;
   else sprite = INTERROGATION_SPRITE;
@@ -199,7 +206,6 @@ void createBlock(GameState *state, int x, int y,
 }
 
 void initObjs(GameState *state) {
-  Block *blocks = state->blocks;
   Screen *screen = &state->screen;
   u_short tile = screen->tile;
   state->blocksLenght = 0;
@@ -211,7 +217,7 @@ void initObjs(GameState *state) {
 }
 
 void initGame(GameState *state) {
-  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0) {
     printf("Could not initialize SDL! SDL_Error: %s\n", SDL_GetError());
     exit(1);
   }
@@ -222,8 +228,10 @@ void initGame(GameState *state) {
   state->screen.w = 640; // TODO: Screen resizing
   state->screen.h = 480;
   state->screen.tile = 64;
-  state->screen.dt = 0; // DeltaTime
+  state->screen.deltaTime = 0; // DeltaTime
   state->screen.targetFps = 60;
+  state->screen.timerOn = false;
+  state->screen.timerStart = 0;
 
   SDL_Window *window = SDL_CreateWindow(
       "Mario copy", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -243,7 +251,7 @@ void initGame(GameState *state) {
   }
   state->renderer = renderer;
 
-  Character player;
+  Player player;
   player.w = state->screen.tile;
   player.h = state->screen.tile;
   player.x = state->screen.w / 2.0f - player.w;
@@ -251,11 +259,9 @@ void initGame(GameState *state) {
   player.dx = 0;
   player.dy = 0;
   player.tall = false;
-  player.firePower = false; // TODO: Remove this before commit
+  player.firePower = false;
   player.invincible = false;
-  player.onSurface = false;
-  player.holdingJump = false;
-  player.onJump = false;
+  player.transforming = false;
   player.facingRight = true;
   player.frame = 0;
   state->player = player;
@@ -271,7 +277,7 @@ void initGame(GameState *state) {
 // Takes care of all the events of the game.
 void handleEvents(GameState *state) {
   SDL_Event event;
-  Character *player = &state->player;
+  Player *player = &state->player;
   const short MAX_JUMP = -15, MAX_SPEED = 7;
   const float JUMP_FORCE = 2.5f, SPEED = 0.2f, FRIC = 0.85f;
   const u_short tile = state->screen.tile;
@@ -309,6 +315,7 @@ void handleEvents(GameState *state) {
     }
   }
   _Bool walkPressed = false;
+  // TODO: Implement deltaTime in here
   const Uint8 *key = SDL_GetKeyboardState(NULL);
   if (
     !player->isSquatting && (key[SDL_SCANCODE_LEFT] || key[SDL_SCANCODE_A])
@@ -367,32 +374,37 @@ void handleCollision(
   float dy,
   GameState *state
 ) {
-  Character *player = &state->player;
+  Player *player = &state->player;
   Block *blocks = state->blocks;
   const u_short pw = player->w, ph = player->h;
   _Bool onBlock = false, onObj = false;
   float *px = &player->x, *py = &player->y;
   const float BLOCK_SPEED = 1.5f;
 
-  for (u_int i = 0; i < state->blocksLenght; i++) {
+  for (Uint32 i = 0; i < state->blocksLenght; i++) {
     Item *item = &blocks[i].item;
     _Bool *gotHit = &blocks[i].gotHit, *isVisible = &item->isVisible;
     const BlockState blockType = blocks[i].type;
     const ItemType itemType = item->type;
     float ix = item->x, iy = item->y;
-    // NOTES: Don't use these if inside == NOTHING
+    // NOTES: Don't use these if blockType == NOTHING
     const u_short iw = item->w, ih = item->h;
 
     SDL_Rect brect = blocks[i].rect;
     float bx = brect.x, by = blocks[i].y;
     const u_short bw = brect.w, bh = brect.h;
 
-    // ERROR: Collision with items and enemies must occur after solids
-    /*
-    const _Bool blockOffScreen = (bx + bw < 0 || bx > state->screen.w) ||
-                                 (by + bh < 0 || by > state->screen.h);
-    if (blockOffScreen) continue;
-    */
+    // NOTES: This reads as: If a brick block, or a empty coin block,
+    // or an empty fire flower block is off screen, skip it.
+    // TODO: Test if this is working later
+    if ((
+      blockType == NOTHING ||
+      (blockType == EMPTY && itemType == COINS) ||
+      (blockType == EMPTY && itemType == FIRE_FLOWER)) && (
+      (bx + bw < 0 || bx > state->screen.w) ||
+      (by + bh < 0 || by > state->screen.h)
+    )) continue;
+
 
     const _Bool blockCollision =
         (*px < bx + bw && * px + pw > bx) &&
@@ -407,6 +419,9 @@ void handleCollision(
         onBlock = true;
       } else if (dy < 0) {
         *py = by + bh;
+        // TODO: Make this condition be done with the side he is oriented
+        // with, AKA make his fist collide with the bottom half of the block
+        // for it to get hit
         if ((!player->tall && blockType == NOTHING) ||
             (blockType == FULL))
           *gotHit = true;
@@ -438,21 +453,31 @@ void handleCollision(
           (*py < iy + ih && * py + ph > iy);
       if (itemCollision) {
         *isVisible = false;
-        if (itemType == MUSHROOM && !player->firePower) {
-          player->tall = true;
+        if (itemType == MUSHROOM && !player->tall) {
+          // TODO: When TALL_TO_FIRE is made uncomment this
+          // player->tall = true;
           player->y -= state->screen.tile;
-        }
-        else if (itemType == FIRE_FLOWER) player->firePower = true;
-        else if (itemType == STAR) player->invincible = true;
+          player->h += state->screen.tile;
+          player->transforming = true;
+        } else if (itemType == FIRE_FLOWER && !player->firePower) {
+          if (!player->tall) {
+            player->y -= state->screen.tile;
+            player->h += state->screen.tile;
+            // TODO: Move this when TALL_TO_FIRE is made
+            player->transforming = true;
+          }
+          player->firePower = true;
+        } else if (itemType == STAR) player->invincible = true;
       }
     }
   }
-  for (u_int i = 0; i < state->objsLength; i++) {
+  for (Uint32 i = 0; i < state->objsLength; i++) {
     SDL_Rect obj = state->objs[i];
     const _Bool collision = (*px < obj.x + obj.w && * px + pw > obj.x) &&
                             (*py < obj.y + obj.h && * py + ph > obj.y);
-    const _Bool objOffScreen = (obj.x + obj.w < 0 || obj.x > state->screen.w) ||
-                               (obj.y + obj.h < 0 || obj.y > state->screen.h);
+    const _Bool objOffScreen =
+      (obj.x + obj.w < 0 || obj.x > (int) state->screen.w) ||
+      (obj.y + obj.h < 0 || obj.y > (int) state->screen.h);
     if (objOffScreen) continue;
 
     if (collision) {
@@ -471,11 +496,10 @@ void handleCollision(
 
 // Apply physics to the player, the objects, and the eneyms.
 void physics(GameState *state) {
-  Character *player = &state->player;
-  const float *dt = &state->screen.dt;
+  Player *player = &state->player;
+  const float *dt = &state->screen.deltaTime;
   const u_short TARGET_FPS = state->screen.targetFps;
   const float MAX_GRAVITY = 20, MAX_DELTA_TIME = 1 / (float) TARGET_FPS;
-  const u_int blength = 2, objsLength = 6;
 
   if (*dt && *dt < MAX_DELTA_TIME)
     player->x += player->dx * TARGET_FPS * *dt;
@@ -501,17 +525,16 @@ void physics(GameState *state) {
 
 // Handles animations and wich frames all moving parts of the game to be in.
 void handleFrames(GameState *state) {
-  Character *player = &state->player;
-  const u_short tile = state->screen.tile;
+  Player *player = &state->player;
   const _Bool isSmall = !player->tall && !player->firePower;
-  // TODO: Implement deltaTime in animation
-  // NOTES: Make question: If dx is influenced by dt.
-  // Does that means that the animSpeed is indirectly influenced by dt?
-  Uint32 animSpeed = fabsf(player->dx * 0.3f);
+  const Uint32 tile = state->screen.tile;
+  // TODO: Implement fixed timestamp in animations
+  // NOTES: I think this is already a fixed timestamp way of doing this
+  // TODO: Only do this calculation conditionally
+  int animSpeed = fabsf(player->dx * 0.3f);
   if (!animSpeed) animSpeed = 1;
-  const Uint32 walkFrame = SDL_GetTicks() * animSpeed / 190 % 3;
-  // NOTES: This enum is defined here cause it does not needs global scope for now
-  typedef enum {
+  const Uint32 walkFrame = SDL_GetTicks() * animSpeed / 180 % 3;
+  enum {
     STILL,
     WALK_1, WALK_2, WALK_3,
     TURNING, JUMP, DYING,
@@ -520,8 +543,30 @@ void handleFrames(GameState *state) {
     TALL_TURNING, TALL_JUMP, TALL_SQUATTING,
     FIRE_STILL,
     FIRE_WALK_1, FIRE_WALK_2, FIRE_WALK_3,
-    FIRE_TURNING, FIRE_JUMP, FIRE_SQUATTING
-  } Sprites;
+    FIRE_TURNING, FIRE_JUMP, FIRE_SQUATTING,
+    SMALL_TO_TALL_1, SMALL_TO_TALL_2, SMALL_TO_TALL_3,
+    SMALL_TO_FIRE_1, SMALL_TO_FIRE_2, SMALL_TO_FIRE_3
+  };
+
+  if (player->transforming && !player->tall) {
+    if (!state->screen.timerOn)
+      state->screen.timerStart = SDL_GetTicks();
+    state->screen.timerOn = true;
+    const Uint32 elapsedTime = SDL_GetTicks() - state->screen.timerStart;
+    const Uint32 xformFrame = elapsedTime / 180 % 3;
+    int xformTo;
+    if (!player->firePower) xformTo = SMALL_TO_TALL_1;
+    else xformTo = SMALL_TO_FIRE_1;
+    player->frame = xformFrame + xformTo;
+    if (player->h < tile * 2) player->h = tile * 2;
+    if (elapsedTime >= 2000) {
+      player->transforming = false;
+      // TODO: Make an animation for TALL_TO_FIRE
+      player->tall = true;
+      state->screen.timerOn = false;
+    }
+    else return;
+  }
 
   if (isSmall) {
     if (player->holdingJump)
@@ -556,7 +601,7 @@ void handleFrames(GameState *state) {
 // Renders to the screen
 void render(GameState *state) {
   handleFrames(state);
-  Character *player = &state->player;
+  Player *player = &state->player;
   Sheets *sheets = &state->sheets;
   Screen *screen = &state->screen;
   Block *blocks = state->blocks;
@@ -583,7 +628,7 @@ void render(GameState *state) {
   // TODO: Add frames for other items
   // TODO: Animate fire_flower and star
   // NOTES: Maybe its better to handle animation from this loop to not make another
-  for (u_int i = 0; i < state->blocksLenght; i++) {
+  for (Uint32 i = 0; i < state->blocksLenght; i++) {
     if (blocks[i].type != EMPTY) {
       SDL_Rect dstblock = {blocks[i].rect.x, blocks[i].y, tile, tile};
       blocks[i].rect = dstblock;
@@ -595,6 +640,7 @@ void render(GameState *state) {
 
       if (item->type == MUSHROOM) frame = 0;
       else if (item->type == FIRE_FLOWER) frame = 2;
+      else frame = 4; // NOTES: Placeholder else
       SDL_RenderCopy(
         state->renderer,
         sheets->items,
@@ -611,7 +657,7 @@ void render(GameState *state) {
   }
   // Rendering ground
   // NOTES: This method is very limitating, reform it later
-  for (u_int i = 0; i < state->objsLength; i++) {
+  for (Uint32 i = 0; i < state->objsLength; i++) {
     state->objs[i] = dstground;
     SDL_RenderCopy(state->renderer, sheets->objs, &srcground, &dstground);
     dstground.x += dstground.w;
@@ -628,9 +674,11 @@ int main(void) {
   while (true) {
     lastTime = currentTime;
     currentTime = SDL_GetTicks();
-    state.screen.dt = (currentTime - lastTime) / 1000.0f;
-    handleEvents(&state);
-    physics(&state);
+    state.screen.deltaTime = (currentTime - lastTime) / 1000.0f;
+    if (!state.player.transforming) {
+      handleEvents(&state);
+      physics(&state);
+    }
     render(&state);
   }
 }
