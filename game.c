@@ -20,13 +20,17 @@ typedef enum {
   SHINY_SPRITE, BRICK_SPRITE, EMPTY_SPRITE, INTERROGATION_SPRITE
 } BlockSprite;
 
+typedef struct {
+  float x, y, dx, dy; 
+  _Bool visible;
+} Fireball;
 
 typedef struct {
   float x, y, dx, dy;
-  u_short w, h;
+  u_short w, h, frame, fireballLimit;
   _Bool tall, firePower, invincible, transforming, onSurface, holdingJump,
         onJump, facingRight, isSquatting;
-  u_short frame;
+  Fireball fireballs[3];
 } Player;
 
 typedef struct {
@@ -53,14 +57,8 @@ typedef struct {
 } Screen;
 
 typedef struct {
-  SDL_Texture *mario;
-  SDL_Texture *objs;
-  SDL_Texture *items;
-  SDL_Texture *effects;
-  SDL_Rect srcmario[30];
-  SDL_Rect srcsobjs[4];
-  SDL_Rect srcitems[20];
-  SDL_Rect srceffects[10];
+  SDL_Texture *mario, *objs, *items, *effects;
+  SDL_Rect srcmario[30], srcsobjs[4], srcitems[20], srceffects[20];
 } Sheets;
 
 typedef struct {
@@ -186,6 +184,8 @@ void initTextures(GameState *state) {
       getsrcs(sheets->srceffects, 1, i, false, 0.5f,
               0.5f, 8 * (4 + i - 2), 32 + 8);
   }
+  getsrcs(sheets->srceffects, 4, 4, 1, 0.5f, 0.5f, 8, 8); // Fire ball
+  getsrcs(sheets->srceffects, 4, 8, 2, 1, 1, false, false); // Fire explosion
 }
 
 // This function alone does not create interactive blocks, make sure
@@ -287,12 +287,13 @@ void initGame(GameState *state) {
   player.y = state->screen.h - player.h - state->screen.tile * 2;
   player.dx = 0;
   player.dy = 0;
-  player.tall = true;
+  player.tall = false;
   player.firePower = false;
   player.invincible = false;
   player.transforming = false;
   player.facingRight = true;
   player.frame = 0;
+  player.fireballLimit = 4;
   state->player = player;
   // NOTES: This is for testing
   if (player.tall || player.firePower) {
@@ -326,6 +327,29 @@ void handleEvents(GameState *state) {
           case SDLK_ESCAPE:
             quit(state, 0);
             break;
+          case SDLK_f: {
+            if (!player->firePower) break;
+            u_short ballCount = 0, emptySlot;
+            for (u_short i = 0; i < player->fireballLimit; i++) {
+              if (player->fireballs[i].visible) ballCount++;
+              else emptySlot = i;
+            }
+            if (ballCount < player->fireballLimit) {
+              Fireball *ball = &player->fireballs[emptySlot];
+              if (player->facingRight) {
+                ball->x = player->x + player->w;
+                ball->dx = MAX_SPEED;
+              }
+              else {
+                ball->x = player->x;
+                ball->dx = -MAX_SPEED;
+              }
+              ball->y = player->y;
+              ball->dy = MAX_SPEED;
+              ball->visible = true;
+            }
+            break;
+          }
         }
       case SDL_KEYUP:
         if (event.key.repeat != 0) break;
@@ -398,7 +422,7 @@ void handleEvents(GameState *state) {
 // Handles the collision a axis per time, call this first with dx only,
 // then call it again for the dy.
 // This function will only run for things that are displayed on screen.
-void handlePlayerCollision(float dx, float dy, GameState *state) {
+void handlePlayerColl(float dx, float dy, GameState *state) {
   Player *player = &state->player;
   Block *blocks = state->blocks;
   const u_short pw = player->w, ph = player->h;
@@ -432,8 +456,8 @@ void handlePlayerCollision(float dx, float dy, GameState *state) {
     )) continue;
 
     const _Bool blockCollision =
-        (*px < bx + bw && * px + pw > bx) &&
-        (*py < by + bh && * py + ph > by);
+        (*px < bx + bw && *px + pw > bx) &&
+        (*py < by + bh && *py + ph > by);
     const float initY = blocks[i].initY;
 
     if (blockCollision) {
@@ -452,7 +476,7 @@ void handlePlayerCollision(float dx, float dy, GameState *state) {
           blocks[i].gotDestroyed = true;
         // TODO: Add a mechanic to type == COINS
         //       to only become empty after 10 coins/hits
-        if (itemType > COINS) {
+        if (blockType != NOTHING && itemType > COINS) {
           item->isFree = true;
           blocks[i].sprite = EMPTY_SPRITE;
         }
@@ -474,8 +498,8 @@ void handlePlayerCollision(float dx, float dy, GameState *state) {
     }
     if (*isVisible && item->isFree) {
       const _Bool itemCollision =
-          (*px < ix + iw && * px + pw > ix) &&
-          (*py < iy + ih && * py + ph > iy);
+          (*px < ix + iw && *px + pw > ix) &&
+          (*py < iy + ih && *py + ph > iy);
       if (itemCollision) {
         *isVisible = false;
         if (itemType == MUSHROOM && !player->tall) {
@@ -498,8 +522,8 @@ void handlePlayerCollision(float dx, float dy, GameState *state) {
   }
   for (uint i = 0; i < state->objsLength; i++) {
     SDL_Rect obj = state->objs[i];
-    const _Bool collision = (*px < obj.x + obj.w && * px + pw > obj.x) &&
-                            (*py < obj.y + obj.h && * py + ph > obj.y);
+    const _Bool collision = (*px < obj.x + obj.w && *px + pw > obj.x) &&
+                            (*py < obj.y + obj.h && *py + ph > obj.y);
     if ((obj.x + obj.w < 0 || obj.x > (int) state->screen.w) ||
         (obj.y + obj.h < 0 || obj.y > (int) state->screen.h)
     ) continue;
@@ -518,27 +542,69 @@ void handlePlayerCollision(float dx, float dy, GameState *state) {
   player->onSurface = onBlock || onObj;
 }
 
+// Takes care of the collision of the fireballs with everything.
+// Except the player
+void handleFireballColl(GameState *state, u_short index, float dx, float dy) {
+  Fireball *ball = &state->player.fireballs[index];
+  const u_short fs = state->screen.tile / 2;
+
+  if (!ball->visible) return;
+  if (!((ball->x + fs > 0 && ball->x < state->screen.w) &&
+        (ball->y + fs > 0 && ball->y < state->screen.h))) {
+    ball->visible = false;
+    return;
+  }
+
+  for (uint i = 0; i < state->blocksLenght; i++) {
+    const float bx = state->blocks[i].rect.x, by = state->blocks[i].y;
+    const u_short bs = state->screen.tile;
+    if ((ball->x < bx + bs && ball->x + fs > bx) &&
+        (ball->y < by + bs && ball->y + fs > by)) {
+      if (dx > 0) ball->x = bx - fs;
+      else if (dx < 0) ball->x = bx + bs;
+      else if (dy > 0) ball->y = by - fs;
+      else if (dy < 0) ball->y = by + bs;
+      if (dx) ball->dx *= -1;
+      else ball->dy *= -1;
+    }
+  }
+  for (uint i = 0; i < state->objsLength; i++) {
+    SDL_Rect obj = state->objs[i];
+    if ((ball->x < obj.x + obj.w && ball->x + fs > obj.x) &&
+        (ball->y < obj.y + obj.h && ball->y + fs > obj.y)) {
+      if (dx > 0) ball->dx = obj.w - obj.w;
+      else if (dx < 0) ball->dx = obj.w + obj.w;
+      else if (dy > 0) ball->y = obj.y - fs;
+      else if (dy < 0) ball->y = obj.y + obj.h;
+      if (dx) ball->dx *= -1;
+      else ball->dy *= -1;
+    }
+  }
+}
+
 // Apply physics to the player, the objects, and the eneyms.
 void physics(GameState *state) {
   Player *player = &state->player;
-  const float *dt = &state->screen.deltaTime;
+  float dt = state->screen.deltaTime;
   const u_short TARGET_FPS = state->screen.targetFps;
-  const float MAX_GRAVITY = 20, MAX_DELTA_TIME = 1 / (float) TARGET_FPS;
+  const float MAX_GRAVITY = 20;
 
-  if (*dt && *dt < MAX_DELTA_TIME)
-    player->x += player->dx * TARGET_FPS * *dt;
-  else
-    player->x += player->dx * TARGET_FPS * MAX_DELTA_TIME;
-  handlePlayerCollision(player->dx, 0, state);
+  player->x += player->dx * TARGET_FPS * dt;
+  handlePlayerColl(player->dx, 0, state);
 
-  if (player->dy < MAX_GRAVITY && *dt && *dt < MAX_DELTA_TIME) {
-    player->dy += GRAVITY * TARGET_FPS * *dt;
-    player->y += player->dy * TARGET_FPS * *dt;
-  } else {
-    player->dy += GRAVITY * TARGET_FPS * MAX_DELTA_TIME;
-    player->y += player->dy * TARGET_FPS * MAX_DELTA_TIME;
+  if (player->dy < MAX_GRAVITY) {
+    player->dy += GRAVITY * TARGET_FPS * dt;
+    player->y += player->dy * TARGET_FPS * dt;
   }
-  handlePlayerCollision(0, player->dy, state);
+  handlePlayerColl(0, player->dy, state);
+
+  for (u_short i = 0; i < player->fireballLimit; i++) {
+    Fireball *ball = &player->fireballs[i];
+    ball->x += ball->dx * TARGET_FPS * dt;
+    handleFireballColl(state, i, ball->dx, 0);
+    ball->y += ball->dy * TARGET_FPS * dt;
+    handleFireballColl(state, i, 0, ball->dy);
+  }
 
   // NOTES: Placeholder code below, prevent from falling into endeless pit
   if (player->y - player->h > state->screen.h) {
@@ -552,8 +618,6 @@ void handlePlayerFrames(GameState *state) {
   Player *player = &state->player;
   const _Bool isSmall = !player->tall && !player->firePower;
   const uint tile = state->screen.tile;
-  // TODO: Implement fixed timestamp in animations
-  // NOTES: I think this is already a fixed timestamp way of doing this
   // TODO: Only do this calculation conditionally
   int animSpeed = fabsf(player->dx * 0.3f);
   if (!animSpeed) animSpeed = 1;
@@ -726,6 +790,20 @@ void render(GameState *state) {
       }
     }
   }
+  // TODO: Add a way of removing fireballs both from the screen and fom the array
+  for (u_short i = 0; i < player->fireballLimit; i++) {
+    Fireball *ball = &player->fireballs[i];
+    if (!ball->visible) continue;
+    const u_short fs = tile / 2;
+    SDL_Rect fireballrect = {ball->x, ball->y, fs, fs};
+    const u_short frame = SDL_GetTicks() / 180 % 4 + 4;
+    SDL_RenderCopy(
+      state->renderer,
+      sheets->effects,
+      &sheets->srceffects[frame],
+      &fireballrect
+    );
+  }
   SDL_RenderPresent(state->renderer);
 }
 
@@ -746,5 +824,6 @@ int main(void) {
   }
 }
 // TODO: Make mushroom and star to move arround
-// TODO: Make the player not be able to trigger events
-//       on the first iteration of the game loop.
+// TODO: Have an delay on player events
+// TODO: Have the bitsX[2] and bitsY[2] since there are only
+//       two X and Y positions the 4 bits can be
