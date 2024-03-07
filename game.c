@@ -35,18 +35,25 @@ typedef struct {
 
 typedef struct {
   float x, y, dx, dy;
-  u_short w, h, coins;
+  u_short w, h;
   ItemType type;
   _Bool isFree, isVisible, canJump;
 } Item;
+
+typedef struct {
+  float x, y;
+  u_short w, h;
+  _Bool onAir, willFall;
+} Coin;
 
 typedef struct {
   SDL_Rect rect;
   float y, initY, bitDx, bitDy, bitsX[4], bitsY[4];
   _Bool gotHit, gotDestroyed, bitFall;
   BlockState type;
+  Coin coins[10];
   Item item;
-  u_short sprite;
+  u_short sprite, maxCoins, coinCount;
 } Block;
 
 typedef struct {
@@ -223,6 +230,19 @@ void createBlock(GameState *state, int x, int y,
   block->sprite = sprite;
   state->blocksLenght++;
   if (tBlock == NOTHING) return;
+  else if (tItem == COINS) {
+    block->maxCoins = 10;
+    block->coinCount = block->maxCoins;
+    for (u_short i = 0; i < block->maxCoins; i++) {
+      Coin *coin = &block->coins[i];
+      coin->x = x + iw / 2.0f;
+      coin->y = y;
+      coin->w = iw;
+      coin->h = state->screen.tile;
+      coin->onAir = false;
+      coin->willFall = false;
+    }
+  }
   block->item.x = x;
   block->item.y = y;
   block->item.w = iw;
@@ -230,11 +250,6 @@ void createBlock(GameState *state, int x, int y,
   block->item.type = tItem;
   block->item.isFree = false;
   block->item.isVisible = true;
-  if (tItem == COINS) {
-    block->item.x += iw / 2.0f;
-    block->item.canJump = true;
-    block->item.coins = 10;
-  }
 }
 
 void initObjs(GameState *state) {
@@ -249,6 +264,8 @@ void initObjs(GameState *state) {
               FULL, MUSHROOM);
   createBlock(state, screen->w / 2, screen->h - tile * 5, FULL, FIRE_FLOWER);
   createBlock(state, screen->w / 2 + tile, screen->h - tile * 5, FULL, COINS);
+  createBlock(state, screen->w / 2 + tile * 2, screen->h - tile * 5,
+              FULL, STAR);
 }
 
 void initGame(GameState *state) {
@@ -475,8 +492,16 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
       } else if (dy < 0) {
         *py = by + bh;
         // TODO: Later add this coin to player->coinCount
-        if (itemType == COINS && item->coins)
-          item->coins--;
+        if (itemType == COINS && blocks[i].coinCount) {
+          blocks[i].coinCount--;
+          for (u_short j = 0; j < blocks[i].maxCoins; j++) {
+            Coin *coin = &blocks[i].coins[j];
+            if (!coin->onAir) {
+              coin->onAir = true;
+              break;
+            } else continue;
+          }
+        }
         // TODO: Make this condition be done with the side he is oriented
         //       with, AKA make his fist collide with the bottom half of the
         //       block for it to get hit
@@ -485,7 +510,7 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
           blocks[i].gotDestroyed = true;
         if (blockType == FULL) {
           item->isFree = true;
-          if (itemType > COINS || !item->coins) {
+          if (itemType > COINS || !blocks[i].coinCount) {
             blocks[i].type = EMPTY;
             blocks[i].sprite = EMPTY_SPRITE;
           }
@@ -497,6 +522,8 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
         player->onJump = false;
       }
     }
+
+    // Block bump
     if (
       *gotHit && (!player->tall &&
       (blockType == NOTHING || itemType == COINS))
@@ -505,20 +532,31 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
       if (by + bh > bjump) blocks[i].y -= BLOCK_SPEED;
       else *gotHit = false;
     } else if (by != initY) blocks[i].y += BLOCK_SPEED;
+
+    // Item coming out of block
     if (itemType > COINS && item->isFree) {
       if (item->y > initY - state->screen.tile) item->y -= BLOCK_SPEED;
       else blocks[i].type = EMPTY;
-    } else if (itemType == COINS && item->isFree) {
-      const float COIN_SPEED = BLOCK_SPEED * 4;
-      if (item->canJump && item->y > initY - state->screen.tile * 3)
-        item->y -= COIN_SPEED;
-      else item->canJump = false;
-      if (!item->canJump && item->y < initY) item->y += COIN_SPEED;
-      else if (item->y == initY) {
-        item->isFree = false;
-        item->canJump = true;
+    }
+
+    // Coins coming out of block
+    if (itemType == COINS && item->isFree) {
+      const float COIN_SPEED = BLOCK_SPEED * 3;
+      for (u_short j = 0; j < blocks[i].maxCoins; j++) {
+        Coin *coin = &blocks[i].coins[j];
+        if (!coin->onAir) continue;
+        if (!coin->willFall && coin->y > initY - state->screen.tile * 3)
+          coin->y -= COIN_SPEED;
+        else coin->willFall = true;
+        if (coin->willFall && coin->y < initY) coin->y += COIN_SPEED;
+        else if (coin->y == initY) {
+          coin->willFall = false;
+          coin->onAir = false;
+        }
       }
     }
+
+    // Item collison
     if (*isVisible && item->isFree && itemType > COINS) {
       const _Bool itemCollision =
           (*px < ix + iw && *px + pw > ix) &&
@@ -639,7 +677,8 @@ void physics(GameState *state) {
 // Handles animations and wich frames all moving parts of the game to be in.
 void handlePlayerFrames(GameState *state) {
   Player *player = &state->player;
-  const _Bool isSmall = !player->tall && !player->firePower;
+  const _Bool isSmall = !player->tall && !player->firePower,
+              isJumping = player->holdingJump && player->dy < 0;
   const uint tile = state->screen.tile;
   // TODO: Only do this calculation conditionally
   int animSpeed = fabsf(player->dx * 0.3f);
@@ -680,15 +719,13 @@ void handlePlayerFrames(GameState *state) {
   }
 
   if (isSmall) {
-    if (player->holdingJump)
-      player->frame = JUMP;
+    if (isJumping) player->frame = JUMP;
     else if (player->onSurface) {
       if (!player->dx) player->frame = STILL;
       else player->frame = walkFrame + WALK_1;
     }
   } else if (player->tall && !player->firePower) {
-    if (player->holdingJump)
-      player->frame = TALL_JUMP;
+    if (isJumping) player->frame = TALL_JUMP;
     else if (player->onSurface) {
       if (!player->dx && !player->isSquatting)
         player->frame = TALL_STILL;
@@ -697,8 +734,7 @@ void handlePlayerFrames(GameState *state) {
       else player->frame = walkFrame + TALL_WALK_1;
     }
   } else {
-    if (player->holdingJump)
-      player->frame = FIRE_JUMP;
+    if (isJumping) player->frame = FIRE_JUMP;
     else if (player->onSurface) {
       if (!player->dx && !player->isSquatting)
         player->frame = FIRE_STILL;
@@ -711,7 +747,7 @@ void handlePlayerFrames(GameState *state) {
 
 // If it is not free, then it will be static
 u_short handleItemFrames(Item *item) {
-  enum { FLOWER_FRAME = 2, STAR_FRAME = 7, COIN_FRAME = 10 };
+  enum { FLOWER_FRAME = 2, STAR_FRAME = 6, COIN_FRAME = 10 };
   const u_short velocity = item->type == COINS ? 100 : 180;
   u_short itemFrame = item->isFree ? SDL_GetTicks() / velocity % 4 : 0;
   if (item->type == FIRE_FLOWER) return itemFrame + FLOWER_FRAME;
@@ -759,7 +795,10 @@ void render(GameState *state) {
       SDL_Rect dstblock = {blocks[i].rect.x, blocks[i].y, tile, tile};
       blocks[i].rect = dstblock;
     }
-    if (blocks[i].type != NOTHING && blocks[i].item.isVisible) {
+    if (
+      blocks[i].type != NOTHING && blocks[i].item.isVisible &&
+      blocks[i].item.type != COINS
+    ) {
       Item *item = &blocks[i].item;
       SDL_Rect dstitem = {item->x, item->y, item->w, item->h};
       u_short frame;
@@ -772,6 +811,21 @@ void render(GameState *state) {
         &sheets->srcitems[frame],
         &dstitem
       );
+    }
+    else if (blocks[i].type != NOTHING && blocks[i].item.type == COINS) {
+      for (u_short j = 0; j < blocks[i].maxCoins; j++) {
+        Coin *coin = &blocks[i].coins[j];
+        if (!coin->onAir) continue;
+        SDL_Rect dstcoin = {coin->x, coin->y, coin->w, coin->h};
+        u_short frame = handleItemFrames(&blocks[i].item);
+
+        SDL_RenderCopy(
+          state->renderer,
+          sheets->items,
+          &sheets->srcitems[frame],
+          &dstcoin
+        );
+      }
     }
     if (!blocks[i].gotDestroyed) {
       SDL_RenderCopy(
@@ -851,5 +905,3 @@ int main(void) {
 // TODO: Have an delay on player events
 // TODO: Have the bitsX[2] and bitsY[2] since there are only
 //       two X and Y positions the 4 bits can ke
-// TODO: Make it possible to have multiple coins on the screen just
-//       like the fireballs
