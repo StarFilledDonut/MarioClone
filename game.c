@@ -29,7 +29,7 @@ typedef struct {
   float x, y, dx, dy;
   u_short w, h, frame, fireballLimit;
   _Bool tall, firePower, invincible, transforming, onSurface, holdingJump,
-        onJump, gainingHeigth, facingRight, isWalking, isSquatting;
+        onJump, gainingHeigth, facingRight, isWalking, isSquatting, isFiring;
   Fireball fireballs[3];
 } Player;
 
@@ -57,14 +57,14 @@ typedef struct {
 } Block;
 
 typedef struct {
-  uint w, h, xformTimer, starTimer;
+  uint w, h, xformTimer, starTimer, firingTimer;
   u_short tile, targetFps;
   float deltaTime;
 } Screen;
 
 typedef struct {
   SDL_Texture *mario, *objs, *items, *effects;
-  SDL_Rect srcmario[80], srcsobjs[4], srcitems[20], srceffects[20];
+  SDL_Rect srcmario[85], srcsobjs[4], srcitems[20], srceffects[20];
 } Sheets;
 
 typedef struct {
@@ -180,6 +180,7 @@ void initTextures(GameState *state) {
   getsrcs(sheets->srcmario, 7, &marioFCount, 11, 1, 2, false, false);
   // Fire Mario
   getsrcs(sheets->srcmario, 7, &marioFCount, 15, 1, 2, false, false);
+  getsrcs(sheets->srcmario, 3 * 4, &marioFCount, 17, 1, 2, false, false);
   // Mid transformation
   getsrcs(sheets->srcmario, 6, &marioFCount, 13, 1, 2, false, false);
   getsrcs(sheets->srcsobjs, 4, &objsFCount, 1, 1, 1, false, false);
@@ -289,6 +290,7 @@ void initGame(GameState *state) {
   state->screen.targetFps = 60;
   state->screen.xformTimer = 0;
   state->screen.starTimer = 0;
+  state->screen.firingTimer = 0;
 
   SDL_Window *window = SDL_CreateWindow(
       "Mario copy", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -315,7 +317,7 @@ void initGame(GameState *state) {
   player.y = state->screen.h - player.h - state->screen.tile * 2;
   player.dx = 0;
   player.dy = 0;
-  player.tall = true;
+  player.tall = false;
   player.firePower = false;
   player.invincible = false;
   player.transforming = false;
@@ -359,7 +361,7 @@ void handleEvents(GameState *state) {
             quit(state, 0);
             break;
           case SDLK_f: {
-            if (!player->firePower) break;
+            if (!player->firePower || player->isSquatting) break;
             u_short ballCount = 0, emptySlot;
             for (u_short i = 0; i < player->fireballLimit; i++) {
               if (player->fireballs[i].visible) ballCount++;
@@ -378,6 +380,9 @@ void handleEvents(GameState *state) {
               ball->y = player->y;
               ball->dy = MAX_SPEED;
               ball->visible = true;
+              if (player->isFiring)
+                state->screen.firingTimer = 0;
+              player->isFiring = true;
             }
             break;
           }
@@ -448,16 +453,6 @@ void handleEvents(GameState *state) {
   if (!player->isSquatting && (player->tall || player->firePower))
     player->h = tile * 2;
   else player->h = tile;
-  // Star timer
-  if (player->invincible) {
-    if (!state->screen.starTimer)
-      state->screen.starTimer = SDL_GetTicks();
-
-    if (SDL_GetTicks() - state->screen.starTimer > 20 * 1000) {
-      state->screen.starTimer = 0;
-      player->invincible = false;
-    }
-  }
 
   // NOTES: TEMPORARY CEILING AND LEFT WALL
   if (player->y < 0) player->y = 0;
@@ -715,7 +710,8 @@ void handlePlayerFrames(GameState *state) {
     STAR_TALL_MARIO,
     FIRE_STILL = 35 + 7 * 3,
     FIRE_WALK, FIRE_TURNING = 60, FIRE_JUMP, FIRE_SQUATTING,
-    SMALL_TO_TALL, SMALL_TO_FIRE = 66
+    FIRE_FIRING,
+    SMALL_TO_TALL = 75, SMALL_TO_FIRE = 78
   };
 
   if (player->transforming && !player->tall) {
@@ -737,6 +733,27 @@ void handlePlayerFrames(GameState *state) {
       player->tall = true;
     }
     else return;
+  }
+  // Star timer
+  if (player->invincible) {
+    if (!state->screen.starTimer)
+      state->screen.starTimer = SDL_GetTicks();
+
+    if (SDL_GetTicks() - state->screen.starTimer > 20 * 1000) {
+      state->screen.starTimer = 0;
+      player->invincible = false;
+    }
+  }
+
+  // Firing timer
+  if (player->isFiring) {
+    if (!state->screen.firingTimer)
+      state->screen.firingTimer = SDL_GetTicks();
+
+    if (SDL_GetTicks() - state->screen.firingTimer > 200) {
+      state->screen.firingTimer = 0;
+      player->isFiring = false;
+    }
   }
 
   if (isSmall) {
@@ -766,16 +783,24 @@ void handlePlayerFrames(GameState *state) {
 
     if (player->isSquatting)
       player->frame = FIRE_SQUATTING;
+    if (player->isFiring && !isWalking && !isJumping)
+      player->frame = FIRE_FIRING;
+    else if (player->isFiring && isWalking)
+      player->frame = walkFrame + FIRE_FIRING;
+    else if (player->isFiring && isJumping)
+      player->frame = FIRE_FIRING + 1;
   }
 
   if (player->invincible) {
     const uint starFrame = SDL_GetTicks() / 90 % 4;
     if (!player->firePower) player->frame += starFrame * 7;
-    else {
+    else if (!player->isFiring) {
       u_short fireStarFrames[4] = {
         0, TALL_STILL - 7, TALL_STILL - 7 * 2, TALL_STILL - 7 * 3
       };
       player->frame -= fireStarFrames[starFrame];
+    } else {
+      player->frame += 3 * starFrame;
     }
   }
 }
