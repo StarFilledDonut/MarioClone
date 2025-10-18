@@ -57,6 +57,7 @@ void handlePlayerFrames(GameState *state) {
       player->tall = true;
     } else
       return;
+    // TODO: test if this return cancels the rendering of later objs
   }
   // Star timer
   if (player->invincible) {
@@ -163,8 +164,8 @@ void render(GameState *state) {
   SDL_Rect dstground = {0, screen->h - tile * 2, tile * 2, tile * 2};
 
   // Rendering ground
-  // NOTES: This method is very limitating, reform it later.
-  //        This must be behind the block breaking bits
+  // TODO: This method is very limitating, because it does not follow a map
+  // NOTE:  This must be behind the block breaking bits
   for (uint i = 0; i < state->objsLength; i++) {
     state->objs[i] = dstground;
     SDL_RenderCopy(state->renderer, sheets->objs, &srcground, &dstground);
@@ -250,7 +251,7 @@ void render(GameState *state) {
                    &sheets->srcmario[player->frame], &dstplayer, 0, NULL,
                    player->facingRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL);
 
-  for (u_short i = 0; i < player->fireballLimit; i++) {
+  for (u_short i = 0; i < player->fireballLimit && player->fireForm; i++) {
     Fireball *ball = &player->fireballs[i];
     if (!ball->visible)
       continue;

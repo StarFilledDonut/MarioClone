@@ -211,7 +211,6 @@ void initGame(GameState *state) {
   player.frame = 0;
   player.fireballLimit = 4;
   state->player = player;
-  // NOTES: This is for testing
   if (player.tall || player.fireForm) {
     player.h += state->screen.tile;
     player.y -= state->screen.tile;
