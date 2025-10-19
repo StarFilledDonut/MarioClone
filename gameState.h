@@ -9,6 +9,13 @@
 
 typedef enum { COINS, MUSHROOM, FIRE_FLOWER, STAR } ItemType;
 typedef enum { NOTHING, FULL, EMPTY } BlockState;
+typedef enum {
+  SHINY_SPRITE,
+  BRICK_SPRITE,
+  EMPTY_SPRITE,
+  INTERROGATION_SPRITE
+} BlockSprite;
+
 
 typedef struct {
   float dx, dy;

@@ -4,13 +4,6 @@
 #include "gameState.h"
 #include "utils.h"
 
-typedef enum {
-  SHINY_SPRITE,
-  BRICK_SPRITE,
-  EMPTY_SPRITE,
-  INTERROGATION_SPRITE
-} BlockSprite;
-
 // This function alone does not create interactive blocks, make sure
 // to create a dstrect in the render function to work
 void createBlock(
