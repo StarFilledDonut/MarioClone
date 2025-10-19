@@ -8,11 +8,10 @@
 #include <SDL2/SDL_timer.h>
 #include <SDL2/SDL_video.h>
 #include <stdbool.h>
-
 #include "gameState.h"
-#include "render.h"
 #include "init.h"
 #include "input.h"
+#include "render.h"
 
 // Handles the collision a axis per time, call this first with dx only,
 // then call it again for the dy.
@@ -20,9 +19,9 @@
 void handlePlayerColl(float dx, float dy, GameState *state) {
   Player *player = &state->player;
   Block *blocks = state->blocks;
-  const u_short pw = player->w, ph = player->h;
+  const u_short pw = player->rect.w, ph = player->rect.h;
   _Bool onBlock = false, onObj = false;
-  float *px = &player->x, *py = &player->y;
+  float *px = &player->rect.x, *py = &player->rect.y;
   const float BLOCK_SPEED = 1.5f;
 
   for (uint i = 0; i < state->blocksLenght; i++) {
@@ -30,12 +29,12 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
     _Bool *gotHit = &blocks[i].gotHit, *isVisible = &item->isVisible;
     const BlockState blockType = blocks[i].type;
     const ItemType itemType = item->type;
-    float ix = item->x, iy = item->y;
+    float ix = item->rect.x, iy = item->rect.y;
     // NOTES: Don't use these if blockType == NOTHING
-    const u_short iw = item->w, ih = item->h;
+    const u_short iw = item->rect.w, ih = item->rect.h;
 
-    SDL_Rect brect = blocks[i].rect;
-    float bx = brect.x, by = blocks[i].y;
+    SDL_FRect brect = blocks[i].rect;
+    float bx = brect.x, by = blocks[i].rect.y;
     const u_short bw = brect.w, bh = brect.h;
 
     // NOTES: This reads as: If a brick block, or a empty coin block,
@@ -51,7 +50,7 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
       continue;
 
     const _Bool blockCollision =
-        (*px < bx + bw && *px + pw > bx) && (*py < by + bh && *py + ph > by);
+      (*px < bx + bw && *px + pw > bx) && (*py < by + bh && *py + ph > by);
     const float initY = blocks[i].initY;
 
     if (blockCollision) {
@@ -104,16 +103,16 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
         (!player->tall && (blockType == NOTHING || itemType == COINS))) {
       const float bjump = initY + bh - state->screen.tile / 4.0f;
       if (by + bh > bjump)
-        blocks[i].y -= BLOCK_SPEED;
+        blocks[i].rect.y -= BLOCK_SPEED;
       else
         *gotHit = false;
     } else if (by != initY)
-      blocks[i].y += BLOCK_SPEED;
+      blocks[i].rect.y += BLOCK_SPEED;
 
     // Item coming out of block
     if (itemType > COINS && item->isFree) {
-      if (item->y > initY - state->screen.tile)
-        item->y -= BLOCK_SPEED;
+      if (item->rect.y > initY - state->screen.tile)
+        item->rect.y -= BLOCK_SPEED;
       else
         blocks[i].type = EMPTY;
     }
@@ -125,13 +124,13 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
         Coin *coin = &blocks[i].coins[j];
         if (!coin->onAir)
           continue;
-        if (!coin->willFall && coin->y > initY - state->screen.tile * 3)
-          coin->y -= COIN_SPEED;
+        if (!coin->willFall && coin->rect.y > initY - state->screen.tile * 3)
+          coin->rect.y -= COIN_SPEED;
         else
           coin->willFall = true;
-        if (coin->willFall && coin->y < initY)
-          coin->y += COIN_SPEED;
-        else if (coin->y == initY) {
+        if (coin->willFall && coin->rect.y < initY)
+          coin->rect.y += COIN_SPEED;
+        else if (coin->rect.y == initY) {
           coin->willFall = false;
           coin->onAir = false;
         }
@@ -141,19 +140,19 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
     // Item collison
     if (*isVisible && item->isFree && itemType > COINS) {
       const _Bool itemCollision =
-          (*px < ix + iw && *px + pw > ix) && (*py < iy + ih && *py + ph > iy);
+        (*px < ix + iw && *px + pw > ix) && (*py < iy + ih && *py + ph > iy);
       if (itemCollision) {
         *isVisible = false;
         if (itemType == MUSHROOM && !player->tall) {
           // TODO: When TALL_TO_FIRE is made uncomment this
           //       player->tall = true;
-          player->y -= state->screen.tile;
-          player->h += state->screen.tile;
+          player->rect.y -= state->screen.tile;
+          player->rect.h += state->screen.tile;
           player->transforming = true;
         } else if (itemType == FIRE_FLOWER && !player->fireForm) {
           if (!player->tall) {
-            player->y -= state->screen.tile;
-            player->h += state->screen.tile;
+            player->rect.y -= state->screen.tile;
+            player->rect.h += state->screen.tile;
             // TODO: Move this when TALL_TO_FIRE is made
             player->transforming = true;
           }
@@ -197,25 +196,25 @@ void handleFireballColl(GameState *state, u_short index, float dx, float dy) {
 
   if (!ball->visible)
     return;
-  if (!((ball->x + fs > 0 && ball->x < state->screen.w) &&
-        (ball->y + fs > 0 && ball->y < state->screen.h))) {
+  if (!((ball->rect.x + fs > 0 && ball->rect.x < state->screen.w) &&
+        (ball->rect.y + fs > 0 && ball->rect.y < state->screen.h))) {
     ball->visible = false;
     return;
   }
 
   for (uint i = 0; i < state->blocksLenght; i++) {
-    const float bx = state->blocks[i].rect.x, by = state->blocks[i].y;
+    const float bx = state->blocks[i].rect.x, by = state->blocks[i].rect.y;
     const u_short bs = state->screen.tile;
-    if ((ball->x < bx + bs && ball->x + fs > bx) &&
-        (ball->y < by + bs && ball->y + fs > by)) {
+    if ((ball->rect.x < bx + bs && ball->rect.x + fs > bx) &&
+        (ball->rect.y < by + bs && ball->rect.y + fs > by)) {
       if (dx > 0)
-        ball->x = bx - fs;
+        ball->rect.x = bx - fs;
       else if (dx < 0)
-        ball->x = bx + bs;
+        ball->rect.x = bx + bs;
       else if (dy > 0)
-        ball->y = by - fs;
+        ball->rect.y = by - fs;
       else if (dy < 0)
-        ball->y = by + bs;
+        ball->rect.y = by + bs;
       if (dx)
         ball->dx *= -1;
       else
@@ -224,16 +223,16 @@ void handleFireballColl(GameState *state, u_short index, float dx, float dy) {
   }
   for (uint i = 0; i < state->objsLength; i++) {
     SDL_Rect obj = state->objs[i];
-    if ((ball->x < obj.x + obj.w && ball->x + fs > obj.x) &&
-        (ball->y < obj.y + obj.h && ball->y + fs > obj.y)) {
+    if ((ball->rect.x < obj.x + obj.w && ball->rect.x + fs > obj.x) &&
+        (ball->rect.y < obj.y + obj.h && ball->rect.y + fs > obj.y)) {
       if (dx > 0)
         ball->dx = obj.w - obj.w;
       else if (dx < 0)
         ball->dx = obj.w + obj.w;
       else if (dy > 0)
-        ball->y = obj.y - fs;
+        ball->rect.y = obj.y - fs;
       else if (dy < 0)
-        ball->y = obj.y + obj.h;
+        ball->rect.y = obj.y + obj.h;
       if (dx)
         ball->dx *= -1;
       else
@@ -249,27 +248,27 @@ void physics(GameState *state) {
   const u_short TARGET_FPS = state->screen.targetFps;
   const float MAX_GRAVITY = 20;
 
-  player->x += player->dx * TARGET_FPS * dt;
+  player->rect.x += player->dx * TARGET_FPS * dt;
   handlePlayerColl(player->dx, 0, state);
 
   if (player->dy < MAX_GRAVITY) {
     player->dy += GRAVITY * TARGET_FPS * dt;
-    player->y += player->dy * TARGET_FPS * dt;
+    player->rect.y += player->dy * TARGET_FPS * dt;
   }
   handlePlayerColl(0, player->dy, state);
 
   for (u_short i = 0; i < player->fireballLimit; i++) {
     Fireball *ball = &player->fireballs[i];
-    ball->x += ball->dx * TARGET_FPS * dt;
+    ball->rect.x += ball->dx * TARGET_FPS * dt;
     handleFireballColl(state, i, ball->dx, 0);
-    ball->y += ball->dy * TARGET_FPS * dt;
+    ball->rect.y += ball->dy * TARGET_FPS * dt;
     handleFireballColl(state, i, 0, ball->dy);
   }
 
   // NOTES: Placeholder code below, prevent from falling into endeless pit
-  if (player->y - player->h > state->screen.h) {
-    player->y = 0 - player->h;
-    player->x = state->screen.h / 2.0f - player->w;
+  if (player->rect.y - player->rect.h > state->screen.h) {
+    player->rect.y = 0 - player->rect.h;
+    player->rect.x = state->screen.h / 2.0f - player->rect.w;
   }
 }
 

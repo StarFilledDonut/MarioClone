@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_rect.h>
 #include "gameState.h"
 #include "utils.h"
 
@@ -12,8 +13,8 @@ typedef enum {
 
 // This function alone does not create interactive blocks, make sure
 // to create a dstrect in the render function to work
-void createBlock(GameState *state, int x, int y, BlockState tBlock,
-                 ItemType tItem) {
+void createBlock(
+  GameState *state, int x, int y, BlockState tBlock, ItemType tItem) {
   BlockSprite sprite;
   if (tBlock == NOTHING || tItem == COINS)
     sprite = BRICK_SPRITE;
@@ -26,7 +27,7 @@ void createBlock(GameState *state, int x, int y, BlockState tBlock,
     iw = state->screen.tile / 2;
   Block *block = &state->blocks[state->blocksLenght];
   block->rect.x = x;
-  block->y = y;
+  block->rect.y = y;
   if (tBlock == NOTHING) {
     for (u_short i = 0; i < 8; i++) {
       float *bitX = &block->bitsX[i], *bitY = &block->bitsY[i];
@@ -59,18 +60,18 @@ void createBlock(GameState *state, int x, int y, BlockState tBlock,
     block->coinCount = block->maxCoins;
     for (u_short i = 0; i < block->maxCoins; i++) {
       Coin *coin = &block->coins[i];
-      coin->x = x + iw / 2.0f;
-      coin->y = y;
-      coin->w = iw;
-      coin->h = state->screen.tile;
+      coin->rect.x = x + iw / 2.0f;
+      coin->rect.y = y;
+      coin->rect.w = iw;
+      coin->rect.h = state->screen.tile;
       coin->onAir = false;
       coin->willFall = false;
     }
   }
-  block->item.x = x;
-  block->item.y = y;
-  block->item.w = iw;
-  block->item.h = state->screen.tile;
+  block->item.rect.x = x;
+  block->item.rect.y = y;
+  block->item.rect.w = iw;
+  block->item.rect.h = state->screen.tile;
   block->item.type = tItem;
   block->item.isFree = false;
   block->item.isVisible = true;
@@ -82,14 +83,14 @@ void initObjs(GameState *state) {
   state->blocksLenght = 0;
   state->objsLength = 6;
   createBlock(state, tile, screen->h - tile * 3, NOTHING, false);
-  createBlock(state, screen->w / 2 - tile * 2, screen->h - tile * 5, NOTHING,
-              false);
-  createBlock(state, screen->w / 2 - tile, screen->h - tile * 5, FULL,
-              MUSHROOM);
+  createBlock(
+    state, screen->w / 2 - tile * 2, screen->h - tile * 5, NOTHING, false);
+  createBlock(
+    state, screen->w / 2 - tile, screen->h - tile * 5, FULL, MUSHROOM);
   createBlock(state, screen->w / 2, screen->h - tile * 5, FULL, FIRE_FLOWER);
   createBlock(state, screen->w / 2 + tile, screen->h - tile * 5, FULL, COINS);
-  createBlock(state, screen->w / 2 + tile * 2, screen->h - tile * 5, FULL,
-              STAR);
+  createBlock(
+    state, screen->w / 2 + tile * 2, screen->h - tile * 5, FULL, STAR);
 }
 
 // Initialize the textures on the state.sheets, as well as the srcs.
@@ -106,7 +107,7 @@ void initTextures(GameState *state) {
       quit(state, 1);
     }
     SDL_Texture *fileTexture =
-        IMG_LoadTextureTyped_RW(state->renderer, fileRW, 1, "PNG");
+      IMG_LoadTextureTyped_RW(state->renderer, fileRW, 1, "PNG");
     if (i == 0)
       sheets->mario = fileTexture;
     else if (i == 1)
@@ -146,13 +147,31 @@ void initTextures(GameState *state) {
   getsrcs(sheets->srcitems, 4, &itemsFCount, 3, 0.5f, 1, 8, false);
   for (u_short i = 0; i < 4; i++) {
     if (i < 2)
-      getsrcs(sheets->srceffects, 1, &effectsFCount, 3, 0.5f, 0.5f, 8 * (4 + i),
+      getsrcs(sheets->srceffects,
+              1,
+              &effectsFCount,
+              3,
+              0.5f,
+              0.5f,
+              8 * (4 + i),
               false);
     else
-      getsrcs(sheets->srceffects, 1, &effectsFCount, false, 0.5f, 0.5f,
-              8 * (4 + i - 2), 32 + 8);
+      getsrcs(sheets->srceffects,
+              1,
+              &effectsFCount,
+              false,
+              0.5,
+              0.5,
+              8 * (4 + i - 2),
+              32 + 8);
   }
-  getsrcs(sheets->srceffects, 4, &effectsFCount, 1, 0.5f, 0.5f, 8,
+  getsrcs(sheets->srceffects,
+          4,
+          &effectsFCount,
+          1,
+          0.5,
+          0.5,
+          8,
           8); // Fire ball
   // Fire explosion
   getsrcs(sheets->srceffects, 4, &effectsFCount, 2, 1, 1, false, false);
@@ -167,18 +186,22 @@ void initGame(GameState *state) {
     printf("Could not initialize IMG! IMG_Error: %s\n", SDL_GetError());
     exit(1);
   }
-  state->screen.w = 640; // TODO: Screen resizing
-  state->screen.h = 480;
-  state->screen.tile = 64;
-  state->screen.deltaTime = 0; // DeltaTime
-  state->screen.targetFps = 60;
-  state->screen.xformTimer = 0;
-  state->screen.starTimer = 0;
-  state->screen.firingTimer = 0;
+  Screen screen = {.w = 640, // TODO: Screen resizing
+                   .h = 480,
+                   .tile = 64,
+                   .deltaTime = 0, // DeltaTime
+                   .targetFps = 60,
+                   .xformTimer = 0,
+                   .starTimer = 0,
+                   .firingTimer = 0};
+  state->screen = screen;
 
-  SDL_Window *window = SDL_CreateWindow(
-      "Mario copy", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-      state->screen.w, state->screen.h, SDL_WINDOW_SHOWN);
+  SDL_Window *window = SDL_CreateWindow("Mario Bros Demo",
+                                        SDL_WINDOWPOS_UNDEFINED,
+                                        SDL_WINDOWPOS_UNDEFINED,
+                                        screen.w,
+                                        screen.h,
+                                        SDL_WINDOW_SHOWN);
   if (!window) {
     printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
     SDL_Quit();
@@ -188,7 +211,7 @@ void initGame(GameState *state) {
 
   // TODO: Have option to choose fps limit instead of vsync
   SDL_Renderer *renderer = SDL_CreateRenderer(
-      window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
+    window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
   if (!renderer) {
     printf("Renderer could not be created! SDL_Error: %s\n", SDL_GetError());
     quit(state, 1);
@@ -196,24 +219,27 @@ void initGame(GameState *state) {
   state->renderer = renderer;
 
   // TODO: Alter fixed position start later
-  Player player;
-  player.w = state->screen.tile;
-  player.h = state->screen.tile;
-  player.x = state->screen.w / 2.0f - player.w;
-  player.y = state->screen.h - player.h - state->screen.tile * 2;
-  player.dx = 0;
-  player.dy = 0;
-  player.tall = false;
-  player.fireForm = false;
-  player.invincible = false;
-  player.transforming = false;
-  player.facingRight = true;
-  player.frame = 0;
-  player.fireballLimit = 4;
+  u_short tile = screen.tile;
+  SDL_FRect prect = {screen.w / 2.0 - tile, screen.h - tile * 3, tile, tile};
+  Player player = {
+    .rect.w = prect.w,
+    .rect.h = prect.h,
+    .rect.x = prect.x,
+    .rect.y = prect.y,
+    .hitbox = {prect.x + tile / 4.0, prect.y, tile / 2.0, prect.h},
+    .dx = 0,
+    .dy = 0,
+    .tall = false,
+    .fireForm = false,
+    .invincible = false,
+    .transforming = false,
+    .facingRight = true,
+    .frame = 0,
+    .fireballLimit = 4};
   state->player = player;
   if (player.tall || player.fireForm) {
-    player.h += state->screen.tile;
-    player.y -= state->screen.tile;
+    player.rect.h += tile;
+    player.rect.y -= tile;
   }
   initTextures(state);
   initObjs(state);

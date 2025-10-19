@@ -40,13 +40,13 @@ void handleEvents(GameState *state) {
             if (ballCount < player->fireballLimit) {
               Fireball *ball = &player->fireballs[emptySlot];
               if (player->facingRight) {
-                ball->x = player->x + player->w;
+                ball->rect.x = player->rect.x + player->rect.w;
                 ball->dx = MAX_SPEED;
               } else {
-                ball->x = player->x;
+                ball->rect.x = player->rect.x;
                 ball->dx = -MAX_SPEED;
               }
-              ball->y = player->y;
+              ball->rect.y = player->rect.y;
               ball->dy = MAX_SPEED;
               ball->visible = true;
               if (player->isFiring)
@@ -68,7 +68,7 @@ void handleEvents(GameState *state) {
         }
         if (keyup == SDLK_s || keyup == SDLK_DOWN) {
           if (player->isSquatting)
-            player->y -= tile;
+            player->rect.y -= tile;
           player->isSquatting = false;
         }
         break;
@@ -103,11 +103,10 @@ void handleEvents(GameState *state) {
       player->isWalking = false;
     walkPressed = false;
   }
-  if (player->onSurface && !walkPressed &&
-      (player->tall || player->fireForm) &&
+  if (player->onSurface && !walkPressed && (player->tall || player->fireForm) &&
       (key[SDL_SCANCODE_DOWN] || key[SDL_SCANCODE_S])) {
     if (!player->isSquatting)
-      player->y += tile;
+      player->rect.y += tile;
     player->isSquatting = true;
   }
   if (((!player->holdingJump && player->onSurface) ||
@@ -124,13 +123,13 @@ void handleEvents(GameState *state) {
   }
   // Size handling
   if (!player->isSquatting && (player->tall || player->fireForm))
-    player->h = tile * 2;
+    player->rect.h = tile * 2;
   else
-    player->h = tile;
+    player->rect.h = tile;
 
   // NOTES: TEMPORARY CEILING AND LEFT WALL
-  if (player->y < 0)
-    player->y = 0;
-  if (player->x < 0)
-    player->x = 0;
+  if (player->rect.y < 0)
+    player->rect.y = 0;
+  if (player->rect.x < 0)
+    player->rect.x = 0;
 }

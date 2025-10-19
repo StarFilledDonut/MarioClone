@@ -26,8 +26,14 @@ void quit(GameState *state, u_short __status) {
 
 // Get the srcs of the specific frames of a spritesheet.
 // The row is an index, which starts at 0.
-void getsrcs(SDL_Rect srcs[], const u_short frames, u_short *startIndex,
-             const uint row, const float w, const float h, uint x, uint y) {
+void getsrcs(SDL_Rect srcs[],
+             const u_short frames,
+             u_short *startIndex,
+             const uint row,
+             const float w,
+             const float h,
+             uint x,
+             uint y) {
   if (!frames) {
     printf("Invalid number of frames!\n");
     return;

@@ -1,5 +1,4 @@
 #include <SDL2/SDL.h>
-
 #include "gameState.h"
 
 // Handles animations and wich frames all moving parts of the game to be in.
@@ -8,7 +7,7 @@ void handlePlayerFrames(GameState *state) {
   const _Bool isSmall = !player->tall && !player->fireForm,
               isJumping = player->onJump && !player->isSquatting,
               isWalking =
-                  player->isWalking && !player->isSquatting && !player->onJump;
+                player->isWalking && !player->isSquatting && !player->onJump;
   const uint tile = state->screen.tile;
   int animSpeed = fabsf(player->dx * 0.3f);
   if (!animSpeed)
@@ -49,7 +48,7 @@ void handlePlayerFrames(GameState *state) {
     else
       xformTo = SMALL_TO_FIRE;
     player->frame = xformFrame + xformTo;
-    player->h = tile * 2;
+    player->rect.h = tile * 2;
 
     if (elapsedTime >= 2000) {
       player->transforming = false;
@@ -121,8 +120,8 @@ void handlePlayerFrames(GameState *state) {
     if (!player->fireForm)
       player->frame += starFrame * 7;
     else if (!player->isFiring) {
-      u_short fireStarFrames[4] = {0, TALL_STILL - 7, TALL_STILL - 7 * 2,
-                                   TALL_STILL - 7 * 3};
+      u_short fireStarFrames[4] = {
+        0, TALL_STILL - 7, TALL_STILL - 7 * 2, TALL_STILL - 7 * 3};
       player->frame -= fireStarFrames[starFrame];
     } else {
       player->frame += 3 * starFrame;
@@ -173,37 +172,37 @@ void render(GameState *state) {
   }
   // Rendering blocks
   for (uint i = 0; i < state->blocksLenght; i++) {
-    if (blocks[i].type != EMPTY) {
-      SDL_Rect dstblock = {blocks[i].rect.x, blocks[i].y, tile, tile};
-      blocks[i].rect = dstblock;
-    }
     if (blocks[i].type != NOTHING && blocks[i].item.isVisible &&
         blocks[i].item.type != COINS) {
       Item *item = &blocks[i].item;
-      SDL_Rect dstitem = {item->x, item->y, item->w, item->h};
+      SDL_Rect dstitem = {
+        item->rect.x, item->rect.y, item->rect.w, item->rect.h};
       u_short frame;
 
       if (item->type == MUSHROOM)
         frame = 0;
       else
         frame = handleItemFrames(item);
-      SDL_RenderCopy(state->renderer, sheets->items, &sheets->srcitems[frame],
-                     &dstitem);
+      SDL_RenderCopy(
+        state->renderer, sheets->items, &sheets->srcitems[frame], &dstitem);
     } else if (blocks[i].type != NOTHING && blocks[i].item.type == COINS) {
       for (u_short j = 0; j < blocks[i].maxCoins; j++) {
         Coin *coin = &blocks[i].coins[j];
         if (!coin->onAir)
           continue;
-        SDL_Rect dstcoin = {coin->x, coin->y, coin->w, coin->h};
+        SDL_Rect dstcoin = {
+          coin->rect.x, coin->rect.y, coin->rect.w, coin->rect.h};
         u_short frame = handleItemFrames(&blocks[i].item);
 
-        SDL_RenderCopy(state->renderer, sheets->items, &sheets->srcitems[frame],
-                       &dstcoin);
+        SDL_RenderCopy(
+          state->renderer, sheets->items, &sheets->srcitems[frame], &dstcoin);
       }
     }
     if (!blocks[i].gotDestroyed) {
-      SDL_RenderCopy(state->renderer, sheets->objs,
-                     &sheets->srcsobjs[blocks[i].sprite], &blocks[i].rect);
+      SDL_RenderCopyF(state->renderer,
+                      sheets->objs,
+                      &sheets->srcsobjs[blocks[i].sprite],
+                      &blocks[i].rect);
     } else {
       u_short bitSize = screen->tile / 2;
       for (u_short j = 0; j < 4; j++) {
@@ -236,29 +235,34 @@ void render(GameState *state) {
         else
           *bitX -= *bitDx * 0.5f;
 
-        SDL_RenderCopy(state->renderer, sheets->effects, &sheets->srceffects[j],
-                       &bit);
+        SDL_RenderCopy(
+          state->renderer, sheets->effects, &sheets->srceffects[j], &bit);
       }
     }
   }
 
-  SDL_Rect dstplayer = {player->x, player->y, player->w, player->h};
   if (player->isSquatting) {
-    dstplayer.h += tile;
-    dstplayer.y -= tile;
+    player->rect.h += tile;
+    player->rect.y -= tile;
   }
-  SDL_RenderCopyEx(state->renderer, sheets->mario,
-                   &sheets->srcmario[player->frame], &dstplayer, 0, NULL,
-                   player->facingRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL);
+  SDL_RenderCopyExF(state->renderer,
+                    sheets->mario,
+                    &sheets->srcmario[player->frame],
+                    &player->rect,
+                    0,
+                    NULL,
+                    player->facingRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL);
 
   for (u_short i = 0; i < player->fireballLimit && player->fireForm; i++) {
     Fireball *ball = &player->fireballs[i];
     if (!ball->visible)
       continue;
     const u_short fs = tile / 2;
-    SDL_Rect fireballrect = {ball->x, ball->y, fs, fs};
+    SDL_Rect fireballrect = {ball->rect.x, ball->rect.y, fs, fs};
     const u_short frame = SDL_GetTicks() / 180 % 4 + 4;
-    SDL_RenderCopy(state->renderer, sheets->effects, &sheets->srceffects[frame],
+    SDL_RenderCopy(state->renderer,
+                   sheets->effects,
+                   &sheets->srceffects[frame],
                    &fireballrect);
   }
   SDL_RenderPresent(state->renderer);

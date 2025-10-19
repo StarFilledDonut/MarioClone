@@ -2,6 +2,7 @@
 #define GAME_STATE_H
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_rect.h>
 #include <stdbool.h>
 
 #define GRAVITY 0.8f
@@ -10,34 +11,36 @@ typedef enum { COINS, MUSHROOM, FIRE_FLOWER, STAR } ItemType;
 typedef enum { NOTHING, FULL, EMPTY } BlockState;
 
 typedef struct {
-  float x, y, dx, dy;
+  float dx, dy;
   _Bool visible;
+  SDL_FRect rect;
 } Fireball;
 
 typedef struct {
-  float x, y, dx, dy;
-  u_short w, h, frame, fireballLimit;
+  float dx, dy;
+  u_short frame, fireballLimit;
   _Bool tall, fireForm, invincible, transforming, onSurface, holdingJump,
       onJump, gainingHeigth, facingRight, isWalking, isSquatting, isFiring;
+  SDL_FRect rect;
+  SDL_FRect hitbox;
   Fireball fireballs[3];
 } Player;
 
 typedef struct {
-  float x, y, dx, dy;
-  u_short w, h;
-  ItemType type;
+  float dx, dy;
   _Bool isFree, isVisible, canJump;
+  ItemType type;
+  SDL_FRect rect;
 } Item;
 
 typedef struct {
-  float x, y;
-  u_short w, h;
   _Bool onAir, willFall;
+  SDL_FRect rect;
 } Coin;
 
 typedef struct {
-  SDL_Rect rect;
-  float y, initY, bitDx, bitDy, bitsX[4], bitsY[4];
+  SDL_FRect rect;
+  float initY, bitDx, bitDy, bitsX[4], bitsY[4];
   _Bool gotHit, gotDestroyed, bitFall;
   BlockState type;
   Coin coins[10];
