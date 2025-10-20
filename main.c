@@ -15,9 +15,9 @@
 #include "player.h"
 
 // Takes care of the collision of the fireballs with non-player entities.
-void handleFireballColl(GameState *state, u_short index, float dx, float dy) {
+void handleFireballColl(GameState *state, ushort index, float dx, float dy) {
   Fireball *ball = &state->player.fireballs[index];
-  const u_short fs = state->screen.tile / 2;
+  const ushort fs = state->screen.tile / 2;
 
   if (!ball->visible)
     return;
@@ -29,7 +29,7 @@ void handleFireballColl(GameState *state, u_short index, float dx, float dy) {
 
   for (uint i = 0; i < state->blocksLenght; i++) {
     const float bx = state->blocks[i].rect.x, by = state->blocks[i].rect.y;
-    const u_short bs = state->screen.tile;
+    const ushort bs = state->screen.tile;
     if ((ball->rect.x < bx + bs && ball->rect.x + fs > bx) &&
         (ball->rect.y < by + bs && ball->rect.y + fs > by)) {
       if (dx > 0)
@@ -70,7 +70,7 @@ void handleFireballColl(GameState *state, u_short index, float dx, float dy) {
 void physics(GameState *state) {
   Player *player = &state->player;
   float dt = state->screen.deltaTime;
-  const u_short TARGET_FPS = state->screen.targetFps;
+  const ushort TARGET_FPS = state->screen.targetFps;
   const float MAX_GRAVITY = 20;
 
   if (player->dx) {
@@ -84,7 +84,7 @@ void physics(GameState *state) {
   }
   handlePlayerColl(0, player->dy, state);
 
-  for (u_short i = 0; i < player->fireballLimit; i++) {
+  for (ushort i = 0; i < player->fireballLimit; i++) {
     Fireball *ball = &player->fireballs[i];
     ball->rect.x += ball->dx * TARGET_FPS * dt;
     handleFireballColl(state, i, ball->dx, 0);

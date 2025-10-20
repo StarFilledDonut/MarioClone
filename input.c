@@ -7,11 +7,11 @@ void handleEvents(GameState *state) {
   Player *player = &state->player;
   const short MAX_JUMP = -15, MAX_SPEED = 7;
   const float JUMP_FORCE = 2.5f, SPEED = 0.2f, FRIC = 0.85f;
-  const u_short tile = state->screen.tile;
+  const ushort tile = state->screen.tile;
 
   if (player->onSurface) {
     player->gainingHeigth = false;
-    player->onJump = false;
+    player->jumping = false;
   }
 
   while (SDL_PollEvent(&event)) {
@@ -28,10 +28,10 @@ void handleEvents(GameState *state) {
             quit(state, 0);
             break;
           case SDLK_f: {
-            if (!player->fireForm || player->isSquatting)
+            if (!player->fireForm || player->squatting)
               break;
-            u_short ballCount = 0, emptySlot;
-            for (u_short i = 0; i < player->fireballLimit; i++) {
+            ushort ballCount = 0, emptySlot;
+            for (ushort i = 0; i < player->fireballLimit; i++) {
               if (player->fireballs[i].visible)
                 ballCount++;
               else
@@ -49,9 +49,9 @@ void handleEvents(GameState *state) {
               ball->rect.y = player->rect.y;
               ball->dy = MAX_SPEED;
               ball->visible = true;
-              if (player->isFiring)
+              if (player->firing)
                 state->screen.firingTimer = 0;
-              player->isFiring = true;
+              player->firing = true;
             }
             break;
           }
@@ -67,28 +67,28 @@ void handleEvents(GameState *state) {
           player->gainingHeigth = false;
         }
         if (keyup == SDLK_s || keyup == SDLK_DOWN) {
-          if (player->isSquatting)
+          if (player->squatting)
             player->rect.y -= tile;
-          player->isSquatting = false;
+          player->squatting = false;
         }
         break;
       }
     }
   }
-  _Bool walkPressed = false;
+  bool walkPressed = false;
   const Uint8 *key = SDL_GetKeyboardState(NULL);
-  if (!player->isSquatting && (key[SDL_SCANCODE_LEFT] || key[SDL_SCANCODE_A])) {
+  if (!player->squatting && (key[SDL_SCANCODE_LEFT] || key[SDL_SCANCODE_A])) {
     player->facingRight = false;
-    player->isWalking = true;
+    player->walking = true;
     walkPressed = true;
     if (player->dx > 0)
       player->dx *= FRIC;
     if (player->dx > -MAX_SPEED)
       player->dx -= SPEED;
-  } else if (!player->isSquatting &&
+  } else if (!player->squatting &&
              (key[SDL_SCANCODE_RIGHT] || key[SDL_SCANCODE_D])) {
     player->facingRight = true;
-    player->isWalking = true;
+    player->walking = true;
     walkPressed = true;
     if (player->dx < 0)
       player->dx *= FRIC;
@@ -100,14 +100,14 @@ void handleEvents(GameState *state) {
       if (fabsf(player->dx) < 0.1f)
         player->dx = 0;
     } else
-      player->isWalking = false;
+      player->walking = false;
     walkPressed = false;
   }
   if (player->onSurface && !walkPressed && (player->tall || player->fireForm) &&
       (key[SDL_SCANCODE_DOWN] || key[SDL_SCANCODE_S])) {
-    if (!player->isSquatting)
+    if (!player->squatting)
       player->rect.y += tile;
-    player->isSquatting = true;
+    player->squatting = true;
   }
   if (((!player->holdingJump && player->onSurface) ||
        (!player->onSurface && player->gainingHeigth)) &&
@@ -119,10 +119,10 @@ void handleEvents(GameState *state) {
     else
       player->gainingHeigth = true;
     player->holdingJump = true;
-    player->onJump = true;
+    player->jumping = true;
   }
   // Size handling
-  if (!player->isSquatting && (player->tall || player->fireForm))
+  if (!player->squatting && (player->tall || player->fireForm))
     player->rect.h = tile * 2;
   else
     player->rect.h = tile;

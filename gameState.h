@@ -7,6 +7,8 @@
 
 #define GRAVITY 0.8f
 
+typedef unsigned short ushort;
+
 typedef enum { COINS, MUSHROOM, FIRE_FLOWER, STAR } ItemType;
 typedef enum { NOTHING, FULL, EMPTY } BlockState;
 typedef enum {
@@ -16,43 +18,65 @@ typedef enum {
   INTERROGATION_SPRITE
 } BlockSprite;
 
+typedef enum {
+  STILL,
+  WALK,
+  TURNING = 4,
+  JUMP,
+  DYING,
+  TALL_STILL = 7 * 4,
+  TALL_WALK,
+  TALL_TURNING = 32,
+  TALL_JUMP,
+  TALL_SQUATTING,
+  STAR_TALL,
+  FIRE_STILL = 35 + 7 * 3,
+  FIRE_WALK,
+  FIRE_TURNING = 60,
+  FIRE_JUMP,
+  FIRE_SQUATTING,
+  FIRE_FIRING,
+  SMALL_TO_TALL = 75,
+  SMALL_TO_FIRE = 78
+} PlayerFrame;
 
 typedef struct {
   float dx, dy;
-  _Bool visible;
+  bool visible;
   SDL_FRect rect;
 } Fireball;
 
 typedef struct {
   float dx, dy;
-  u_short frame, fireballLimit;
-  _Bool tall, fireForm, invincible, transforming, onSurface, holdingJump,
-      onJump, gainingHeigth, facingRight, isWalking, isSquatting, isFiring;
-  SDL_FRect rect;
-  SDL_FRect hitbox;
+  ushort fireballLimit;
+  bool tall, fireForm, invincible, transforming, onSurface, holdingJump,
+      jumping, gainingHeigth, facingRight, walking, squatting, firing;
+  SDL_FRect rect, hitbox;
   Fireball fireballs[3];
+  PlayerFrame frame;
 } Player;
 
 typedef struct {
   float dx, dy;
-  _Bool isFree, isVisible, canJump;
+  bool free, visible, canJump;
   ItemType type;
   SDL_FRect rect;
 } Item;
 
 typedef struct {
-  _Bool onAir, willFall;
+  bool onAir, willFall;
   SDL_FRect rect;
 } Coin;
 
 typedef struct {
-  SDL_FRect rect;
+  SDL_FRect rect, bits[4];
   float initY, bitDx, bitDy, bitsX[4], bitsY[4];
-  _Bool gotHit, gotDestroyed, bitFall;
+  bool gotHit, broken, bitFall;
   BlockState type;
-  Coin coins[10];
+  BlockSprite sprite;
   Item item;
-  u_short sprite, maxCoins, coinCount;
+  Coin coins[10];
+  ushort maxCoins, coinCount;
 } Block;
 
 typedef struct {
@@ -62,7 +86,7 @@ typedef struct {
 
 typedef struct {
   uint w, h, xformTimer, starTimer, firingTimer;
-  u_short tile, targetFps;
+  ushort tile, targetFps;
   float deltaTime;
 } Screen;
 

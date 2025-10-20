@@ -13,7 +13,7 @@ void createBlock(
     sprite = BRICK_SPRITE;
   else
     sprite = INTERROGATION_SPRITE;
-  u_short iw;
+  ushort iw;
   if (tItem != COINS)
     iw = state->screen.tile;
   else
@@ -22,7 +22,7 @@ void createBlock(
   block->rect.x = x;
   block->rect.y = y;
   if (tBlock == NOTHING) {
-    for (u_short i = 0; i < 8; i++) {
+    for (ushort i = 0; i < 8; i++) {
       float *bitX = &block->bitsX[i], *bitY = &block->bitsY[i];
       if (i == 0 || i == 2)
         *bitX = x;
@@ -42,16 +42,19 @@ void createBlock(
   block->rect.h = state->screen.tile;
   block->initY = y;
   block->gotHit = false;
-  block->gotDestroyed = false;
+  block->broken = false;
   block->type = tBlock;
   block->sprite = sprite;
   state->blocksLenght++;
-  if (tBlock == NOTHING)
+
+  if (tBlock == NOTHING) {
+    block->item = (Item){0, 0, false, false, false, 0, {0, 0, 0, 0}};
     return;
+  }
   else if (tItem == COINS) {
     block->maxCoins = 10;
     block->coinCount = block->maxCoins;
-    for (u_short i = 0; i < block->maxCoins; i++) {
+    for (ushort i = 0; i < block->maxCoins; i++) {
       Coin *coin = &block->coins[i];
       coin->rect.x = x + iw / 2.0f;
       coin->rect.y = y;
@@ -61,18 +64,19 @@ void createBlock(
       coin->willFall = false;
     }
   }
+
   block->item.rect.x = x;
   block->item.rect.y = y;
   block->item.rect.w = iw;
   block->item.rect.h = state->screen.tile;
   block->item.type = tItem;
-  block->item.isFree = false;
-  block->item.isVisible = true;
+  block->item.free = false;
+  block->item.visible = true;
 }
 
 void initObjs(GameState *state) {
   Screen *screen = &state->screen;
-  u_short tile = screen->tile;
+  ushort tile = screen->tile;
   state->blocksLenght = 0;
   state->objsLength = 6;
   createBlock(state, tile, screen->h - tile * 3, NOTHING, false);
@@ -116,7 +120,7 @@ void initTextures(GameState *state) {
     free(filePath);
     filePath = NULL;
   }
-  u_short marioFCount = 0, objsFCount = 0, itemsFCount = 0, effectsFCount = 0;
+  ushort marioFCount = 0, objsFCount = 0, itemsFCount = 0, effectsFCount = 0;
 
   // Small Mario
   getsrcs(sheets->srcmario, 7, &marioFCount, 1, 1, 1, false, false);
@@ -138,7 +142,7 @@ void initTextures(GameState *state) {
 
   // Coin frames
   getsrcs(sheets->srcitems, 4, &itemsFCount, 3, 0.5f, 1, 8, false);
-  for (u_short i = 0; i < 4; i++) {
+  for (ushort i = 0; i < 4; i++) {
     if (i < 2)
       getsrcs(sheets->srceffects,
               1,
@@ -212,7 +216,7 @@ void initGame(GameState *state) {
   state->renderer = renderer;
 
   // TODO: Alter fixed position start later
-  u_short tile = screen.tile;
+  ushort tile = screen.tile;
   SDL_FRect prect = {screen.w / 2.0 - tile, screen.h - tile * 3, tile, tile};
   Player player = {
     .rect.w = prect.w,

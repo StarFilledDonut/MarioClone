@@ -1,2 +1,5 @@
-buid/
+build/
 game
+
+*.o
+*.d

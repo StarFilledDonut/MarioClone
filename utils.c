@@ -5,7 +5,7 @@
 // Destroy everything that was initialized from SDL then exit the program.
 // @param *state Your instance of GameState
 // @param __status The status shown after exting
-void quit(GameState *state, u_short __status) {
+void quit(GameState *state, ushort __status) {
   Sheets *sheets = &state->sheets;
   if (sheets->effects)
     SDL_DestroyTexture(sheets->effects);
@@ -27,8 +27,8 @@ void quit(GameState *state, u_short __status) {
 // Get the srcs of the specific frames of a spritesheet.
 // The row is an index, which starts at 0.
 void getsrcs(SDL_Rect srcs[],
-             const u_short frames,
-             u_short *startIndex,
+             const ushort frames,
+             ushort *startIndex,
              const uint row,
              const float w,
              const float h,
@@ -38,14 +38,14 @@ void getsrcs(SDL_Rect srcs[],
     printf("Invalid number of frames!\n");
     return;
   }
-  const u_short tile = 16;
+  const ushort tile = 16;
   if (!x)
     x = tile;
   if (!y && row)
     y = tile * (row - 1);
-  u_short j = *startIndex;
+  ushort j = *startIndex;
   *startIndex += frames;
-  for (u_short i = 0; i < frames; i++) {
+  for (ushort i = 0; i < frames; i++) {
     SDL_Rect *frame = &srcs[j];
     frame->x = frames != 1 ? x * i : x;
     frame->y = y;
