@@ -41,13 +41,13 @@ void handleEvents(GameState *state) {
               Fireball *ball = &player->fireballs[emptySlot];
               if (player->facingRight) {
                 ball->rect.x = player->rect.x + player->rect.w;
-                ball->dx = MAX_SPEED;
+                ball->velocity.x = MAX_SPEED;
               } else {
                 ball->rect.x = player->rect.x;
-                ball->dx = -MAX_SPEED;
+                ball->velocity.x = -MAX_SPEED;
               }
               ball->rect.y = player->rect.y;
-              ball->dy = MAX_SPEED;
+              ball->velocity.y = MAX_SPEED;
               ball->visible = true;
               if (player->firing)
                 state->screen.firingTimer = 0;
@@ -61,8 +61,8 @@ void handleEvents(GameState *state) {
           break;
         const SDL_Keycode keyup = event.key.keysym.sym;
         if (keyup == SDLK_SPACE || keyup == SDLK_w || keyup == SDLK_UP) {
-          if (player->dy < 0)
-            player->dy *= FRIC;
+          if (player->velocity.y < 0)
+            player->velocity.y *= FRIC;
           player->holdingJump = false;
           player->gainingHeigth = false;
         }
@@ -81,24 +81,24 @@ void handleEvents(GameState *state) {
     player->facingRight = false;
     player->walking = true;
     walkPressed = true;
-    if (player->dx > 0)
-      player->dx *= FRIC;
-    if (player->dx > -MAX_SPEED)
-      player->dx -= SPEED;
+    if (player->velocity.x > 0)
+      player->velocity.x *= FRIC;
+    if (player->velocity.x > -MAX_SPEED)
+      player->velocity.x -= SPEED;
   } else if (!player->squatting &&
              (key[SDL_SCANCODE_RIGHT] || key[SDL_SCANCODE_D])) {
     player->facingRight = true;
     player->walking = true;
     walkPressed = true;
-    if (player->dx < 0)
-      player->dx *= FRIC;
-    if (player->dx < MAX_SPEED)
-      player->dx += SPEED;
+    if (player->velocity.x < 0)
+      player->velocity.x *= FRIC;
+    if (player->velocity.x < MAX_SPEED)
+      player->velocity.x += SPEED;
   } else {
-    if (player->dx) {
-      player->dx *= FRIC;
-      if (fabsf(player->dx) < 0.1f)
-        player->dx = 0;
+    if (player->velocity.x) {
+      player->velocity.x *= FRIC;
+      if (fabsf(player->velocity.x) < 0.1f)
+        player->velocity.x = 0;
     } else
       player->walking = false;
     walkPressed = false;
@@ -113,8 +113,8 @@ void handleEvents(GameState *state) {
        (!player->onSurface && player->gainingHeigth)) &&
       (key[SDL_SCANCODE_SPACE] || key[SDL_SCANCODE_W] ||
        key[SDL_SCANCODE_UP])) {
-    player->dy -= JUMP_FORCE;
-    if (player->dy < MAX_JUMP)
+    player->velocity.y -= JUMP_FORCE;
+    if (player->velocity.y < MAX_JUMP)
       player->gainingHeigth = false;
     else
       player->gainingHeigth = true;

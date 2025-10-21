@@ -4,23 +4,22 @@
 #include "gameState.h"
 #include "utils.h"
 
-// This function alone does not create interactive blocks, make sure
-// to create a dstrect in the render function to work
+// Create a block in state.blocks
 void createBlock(
-  GameState *state, int x, int y, BlockState tBlock, ItemType tItem) {
+  GameState *state, const int x, const int y, const BlockState tBlock, const ItemType tItem) {
   BlockSprite sprite;
   if (tBlock == NOTHING || tItem == COINS)
     sprite = BRICK_SPRITE;
   else
     sprite = INTERROGATION_SPRITE;
-  ushort iw;
-  if (tItem != COINS)
-    iw = state->screen.tile;
-  else
-    iw = state->screen.tile / 2;
+
+  ushort iw = state->screen.tile;
+  if (tItem == COINS)
+    iw /= 2;
+
   Block *block = &state->blocks[state->blocksLenght];
-  block->rect.x = x;
-  block->rect.y = y;
+  block->rect = (SDL_FRect) {x, y, state->screen.tile, state->screen.tile};
+  block->initY = y;
   if (tBlock == NOTHING) {
     for (ushort i = 0; i < 8; i++) {
       float *bitX = &block->bitsX[i], *bitY = &block->bitsY[i];
@@ -37,10 +36,6 @@ void createBlock(
     block->bitDx = 0;
     block->bitFall = false;
   }
-  block->rect.y = y;
-  block->rect.w = state->screen.tile;
-  block->rect.h = state->screen.tile;
-  block->initY = y;
   block->gotHit = false;
   block->broken = false;
   block->type = tBlock;
@@ -48,37 +43,38 @@ void createBlock(
   state->blocksLenght++;
 
   if (tBlock == NOTHING) {
-    block->item = (Item){0, 0, false, false, false, 0, {0, 0, 0, 0}};
+    block->item = (Item){{0, 0}, false, false, false, 0, {0, 0, 0, 0}};
     return;
   }
   else if (tItem == COINS) {
     block->maxCoins = 10;
     block->coinCount = block->maxCoins;
+
     for (ushort i = 0; i < block->maxCoins; i++) {
-      Coin *coin = &block->coins[i];
-      coin->rect.x = x + iw / 2.0f;
-      coin->rect.y = y;
-      coin->rect.w = iw;
-      coin->rect.h = state->screen.tile;
-      coin->onAir = false;
-      coin->willFall = false;
+      block->coins[i] = (Coin) {
+        .rect = {x + iw / 2.0, y, iw, state->screen.tile},
+        .onAir = false,
+        .willFall = false,
+      };
     }
   }
 
-  block->item.rect.x = x;
-  block->item.rect.y = y;
-  block->item.rect.w = iw;
-  block->item.rect.h = state->screen.tile;
-  block->item.type = tItem;
-  block->item.free = false;
-  block->item.visible = true;
+  block->item = (Item) {
+    .velocity = {0, 0},
+    .rect = {x, y, iw, state->screen.tile},
+    .type = tItem,
+    .free = false,
+    .visible = true,
+  };
 }
 
 void initObjs(GameState *state) {
   Screen *screen = &state->screen;
   ushort tile = screen->tile;
+
   state->blocksLenght = 0;
   state->objsLength = 6;
+
   createBlock(state, tile, screen->h - tile * 3, NOTHING, false);
   createBlock(
     state, screen->w / 2 - tile * 2, screen->h - tile * 5, NOTHING, false);
@@ -219,13 +215,9 @@ void initGame(GameState *state) {
   ushort tile = screen.tile;
   SDL_FRect prect = {screen.w / 2.0 - tile, screen.h - tile * 3, tile, tile};
   Player player = {
-    .rect.w = prect.w,
-    .rect.h = prect.h,
-    .rect.x = prect.x,
-    .rect.y = prect.y,
+    .rect = prect,
     .hitbox = {prect.x + tile / 4.0, prect.y, tile / 2.0, prect.h},
-    .dx = 0,
-    .dy = 0,
+    .velocity = {0, 0},
     .tall = false,
     .fireForm = false,
     .invincible = false,
@@ -234,6 +226,7 @@ void initGame(GameState *state) {
     .frame = 0,
     .fireballLimit = 4};
   state->player = player;
+
   if (player.tall || player.fireForm) {
     player.rect.h += tile;
     player.rect.y -= tile;

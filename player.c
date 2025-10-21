@@ -79,9 +79,9 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
         }
       }
       if (dx)
-        player->dx = 0;
+        player->velocity.x = 0;
       else {
-        player->dy = 0;
+        player->velocity.y = 0;
         player->gainingHeigth = false;
       }
     }
@@ -105,6 +105,8 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
         block->type = EMPTY;
     }
 
+    // ERROR: For a reason that gods know why, coins come at a Item speed
+    //        when player.velocity.x == 0
     // Coins coming out of block
     if (item->type == COINS && item->free) {
       const float COIN_SPEED = BLOCK_SPEED * 3;
@@ -112,10 +114,12 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
         Coin *coin = &block->coins[j];
         if (!coin->onAir)
           continue;
+
         if (!coin->willFall && coin->rect.y > initY - tile * 3)
           coin->rect.y -= COIN_SPEED;
         else
           coin->willFall = true;
+
         if (coin->willFall && coin->rect.y < initY)
           coin->rect.y += COIN_SPEED;
         else if (coin->rect.y == initY) {
@@ -170,9 +174,9 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
       } else if (dy < 0)
         *py = obj.y + obj.h;
       if (dx)
-        player->dx = 0;
+        player->velocity.x = 0;
       else
-        player->dy = 0;
+        player->velocity.y = 0;
     }
   }
   player->onSurface = onBlock || onObj;

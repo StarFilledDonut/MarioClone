@@ -40,14 +40,16 @@ typedef enum {
   SMALL_TO_FIRE = 78
 } PlayerFrame;
 
+typedef struct { float x, y; } Velocity;
+
 typedef struct {
-  float dx, dy;
+  Velocity velocity;
   bool visible;
   SDL_FRect rect;
 } Fireball;
 
 typedef struct {
-  float dx, dy;
+  Velocity velocity;
   ushort fireballLimit;
   bool tall, fireForm, invincible, transforming, onSurface, holdingJump,
       jumping, gainingHeigth, facingRight, walking, squatting, firing;
@@ -57,7 +59,7 @@ typedef struct {
 } Player;
 
 typedef struct {
-  float dx, dy;
+  Velocity velocity;
   bool free, visible, canJump;
   ItemType type;
   SDL_FRect rect;

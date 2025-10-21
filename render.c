@@ -8,7 +8,7 @@ void handlePlayerFrames(GameState *state) {
               isJumping = player->jumping && !player->squatting,
               isWalking =
                 player->walking && !player->jumping;
-  int animSpeed = fabsf(player->dx * 0.3f);
+  int animSpeed = fabsf(player->velocity.x * 0.3f);
   if (!animSpeed)
     animSpeed = 1;
   const uint walkFrame = SDL_GetTicks() * animSpeed / 180 % 3;

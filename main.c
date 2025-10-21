@@ -41,9 +41,9 @@ void handleFireballColl(GameState *state, ushort index, float dx, float dy) {
       else if (dy < 0)
         ball->rect.y = by + bs;
       if (dx)
-        ball->dx *= -1;
+        ball->velocity.x *= -1;
       else
-        ball->dy *= -1;
+        ball->velocity.y *= -1;
     }
   }
   for (uint i = 0; i < state->objsLength; i++) {
@@ -51,17 +51,17 @@ void handleFireballColl(GameState *state, ushort index, float dx, float dy) {
     if ((ball->rect.x < obj.x + obj.w && ball->rect.x + fs > obj.x) &&
         (ball->rect.y < obj.y + obj.h && ball->rect.y + fs > obj.y)) {
       if (dx > 0)
-        ball->dx = obj.w - obj.w;
+        ball->velocity.x = obj.w - obj.w;
       else if (dx < 0)
-        ball->dx = obj.w + obj.w;
+        ball->velocity.x = obj.w + obj.w;
       else if (dy > 0)
         ball->rect.y = obj.y - fs;
       else if (dy < 0)
         ball->rect.y = obj.y + obj.h;
       if (dx)
-        ball->dx *= -1;
+        ball->velocity.x *= -1;
       else
-        ball->dy *= -1;
+        ball->velocity.y *= -1;
     }
   }
 }
@@ -73,23 +73,23 @@ void physics(GameState *state) {
   const ushort TARGET_FPS = state->screen.targetFps;
   const float MAX_GRAVITY = 20;
 
-  if (player->dx) {
-    player->hitbox.x += player->dx * TARGET_FPS * dt;
-    handlePlayerColl(player->dx, 0, state);
+  if (player->velocity.x) {
+    player->hitbox.x += player->velocity.x * TARGET_FPS * dt;
+    handlePlayerColl(player->velocity.x, 0, state);
   }
 
-  if (player->dy < MAX_GRAVITY) {
-    player->dy += GRAVITY * TARGET_FPS * dt;
-    player->hitbox.y += player->dy * TARGET_FPS * dt;
+  if (player->velocity.y < MAX_GRAVITY) {
+    player->velocity.y += GRAVITY * TARGET_FPS * dt;
+    player->hitbox.y += player->velocity.y * TARGET_FPS * dt;
   }
-  handlePlayerColl(0, player->dy, state);
+  handlePlayerColl(0, player->velocity.y, state);
 
   for (ushort i = 0; i < player->fireballLimit; i++) {
     Fireball *ball = &player->fireballs[i];
-    ball->rect.x += ball->dx * TARGET_FPS * dt;
-    handleFireballColl(state, i, ball->dx, 0);
-    ball->rect.y += ball->dy * TARGET_FPS * dt;
-    handleFireballColl(state, i, 0, ball->dy);
+    ball->rect.x += ball->velocity.x * TARGET_FPS * dt;
+    handleFireballColl(state, i, ball->velocity.x, 0);
+    ball->rect.y += ball->velocity.y * TARGET_FPS * dt;
+    handleFireballColl(state, i, 0, ball->velocity.y);
   }
 
   // NOTES: Placeholder code below, prevent from falling into endeless pit
