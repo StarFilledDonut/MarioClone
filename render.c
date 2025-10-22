@@ -1,18 +1,65 @@
 #include <SDL2/SDL.h>
 #include "gameState.h"
 
+#define BLOCK_SPEED 3
+
+// Bump animation when player hits a Block from below
+void blockAnimation(Block *block, const u_short tile) {
+  if (block->gotHit) {
+    const float goal = block->initY + block->rect.h - tile / 4.0f;
+    if (block->rect.y + block->rect.h > goal)
+      block->rect.y -= BLOCK_SPEED;
+    else
+      block->gotHit = false;
+  } else if (block->rect.y != block->initY)
+    block->rect.y += BLOCK_SPEED;
+}
+
+void itemAnimation(Block *block, const u_short tile) {
+  // block->Item.oming out of block
+  if (block->item.type > COINS && block->item.free) {
+    if (block->item.rect.y > block->initY - tile)
+      block->item.rect.y -= BLOCK_SPEED;
+    else
+      block->type = EMPTY;
+  }
+
+  // When the type Coin be made into type of Coin, make it so onAir is
+  // unnecessary Coins coming out of block
+  if (block->item.type == COINS && block->item.free) {
+    const float COIN_SPEED = BLOCK_SPEED * 3;
+    for (ushort i = 0; i < block->maxCoins; i++) {
+      Coin *coin = &block->coins[i];
+      if (!coin->onAir)
+        continue;
+
+      if (!coin->willFall && coin->rect.y > block->initY - tile * 3)
+        coin->rect.y -= COIN_SPEED;
+      else
+        coin->willFall = true;
+
+      if (coin->willFall && coin->rect.y < block->initY)
+        coin->rect.y += COIN_SPEED;
+      else if (coin->rect.y == block->initY) {
+        coin->willFall = false;
+        coin->onAir = false;
+      }
+    }
+  }
+}
+
 // Handles animations and wich frames all moving parts of the game to be in.
 void handlePlayerFrames(GameState *state) {
   Player *player = &state->player;
   const bool isSmall = !player->tall && !player->fireForm,
-              isJumping = player->jumping && !player->squatting,
-              isWalking =
-                player->walking && !player->jumping;
+             isJumping = player->jumping && !player->squatting,
+             isWalking = player->walking && !player->jumping;
   int animSpeed = fabsf(player->velocity.x * 0.3f);
   if (!animSpeed)
     animSpeed = 1;
   const uint walkFrame = SDL_GetTicks() * animSpeed / 180 % 3;
 
+  // TODO: remove !player->tall when TALL_TO_FIRE is made
   if (player->transforming && !player->tall) {
     if (!state->screen.xformTimer)
       state->screen.xformTimer = SDL_GetTicks();
@@ -34,7 +81,6 @@ void handlePlayerFrames(GameState *state) {
       player->tall = true;
     } else
       return;
-    // TODO: test if this return cancels the rendering of later objs
   }
   // Star timer
   if (player->invincible) {
@@ -148,11 +194,15 @@ void render(GameState *state) {
     SDL_RenderCopy(state->renderer, sheets->objs, &srcground, &dstground);
     dstground.x += dstground.w;
   }
+
   // Rendering blocks
   for (uint i = 0; i < state->blocksLenght; i++) {
-    if (blocks[i].type != NOTHING && blocks[i].item.visible &&
-        blocks[i].item.type != COINS) {
-      Item *item = &blocks[i].item;
+    Block *block = &blocks[i];
+
+    // Handling item frames
+    if (block->type != NOTHING && block->item.visible &&
+        block->item.type != COINS) {
+      Item *item = &block->item;
       SDL_Rect dstitem = {
         item->rect.x, item->rect.y, item->rect.w, item->rect.h};
       ushort frame;
@@ -163,44 +213,54 @@ void render(GameState *state) {
         frame = handleItemFrames(item);
       SDL_RenderCopy(
         state->renderer, sheets->items, &sheets->srcitems[frame], &dstitem);
-    } else if (blocks[i].type != NOTHING && blocks[i].item.type == COINS) {
-      for (ushort j = 0; j < blocks[i].maxCoins; j++) {
-        Coin *coin = &blocks[i].coins[j];
+    } else if (block->type != NOTHING && block->item.type == COINS) {
+      for (ushort j = 0; j < block->maxCoins; j++) {
+        Coin *coin = &block->coins[j];
         if (!coin->onAir)
           continue;
         SDL_Rect dstcoin = {
           coin->rect.x, coin->rect.y, coin->rect.w, coin->rect.h};
-        ushort frame = handleItemFrames(&blocks[i].item);
+        ushort frame = handleItemFrames(&block->item);
 
         SDL_RenderCopy(
           state->renderer, sheets->items, &sheets->srcitems[frame], &dstcoin);
       }
     }
-    if (!blocks[i].broken) {
+
+    // Animating blocks and items
+    if ((!player->tall && block->type == NOTHING) ||
+        block->item.type == COINS) {
+      blockAnimation(block, screen->tile);
+    }
+    if (block->type != NOTHING)
+      itemAnimation(block, screen->tile);
+
+    // Rendering blocks of broken falling bits
+    if (!block->broken) {
       SDL_RenderCopyF(state->renderer,
                       sheets->objs,
-                      &sheets->srcsobjs[blocks[i].sprite],
-                      &blocks[i].rect);
+                      &sheets->srcsobjs[block->sprite],
+                      &block->rect);
     } else {
       ushort bitSize = screen->tile / 2;
       for (ushort j = 0; j < 4; j++) {
-        float *bitDx = &blocks[i].bitDx, *bitDy = &blocks[i].bitDy,
-              *bitX = &blocks[i].bitsX[j], *bitY = &blocks[i].bitsY[j];
+        float *bitDx = &block->bitDx, *bitDy = &block->bitDy,
+              *bitX = &block->bitsX[j], *bitY = &block->bitsY[j];
         SDL_Rect bit = {*bitX, *bitY, bitSize, bitSize};
 
-        if (blocks[i].bitsY[0] > (int)screen->h + 1)
+        if (block->bitsY[0] > (int)screen->h + 1)
           break;
         else if (bit.y > (int)screen->h + 1)
           continue;
 
         const float SPEED = 1.2f * screen->targetFps * screen->deltaTime;
-        const ushort MAX_SPEED = 6, LIMIT = blocks[i].initY - tile;
+        const ushort MAX_SPEED = 6, LIMIT = block->initY - tile;
 
-        if (*bitDy > -MAX_SPEED && !blocks[i].bitFall)
+        if (*bitDy > -MAX_SPEED && !block->bitFall)
           *bitDy -= SPEED;
         else if (*bitY <= LIMIT)
-          blocks[i].bitFall = true;
-        if (*bitDx < MAX_SPEED && !blocks[i].bitFall)
+          block->bitFall = true;
+        if (*bitDx < MAX_SPEED && !block->bitFall)
           *bitDx += SPEED * screen->targetFps * screen->deltaTime;
         if (*bitDy < MAX_SPEED * 1.25f)
           *bitDy += GRAVITY * screen->targetFps * screen->deltaTime;

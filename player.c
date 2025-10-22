@@ -1,8 +1,6 @@
 #include <SDL2/SDL.h>
 #include "gameState.h"
 
-#define BLOCK_SPEED 1.5f
-
 // Handles the collision a axis per time, call this first with dx only,
 // then call it again for the dy.
 // This function will only run for things that are displayed on screen.
@@ -25,21 +23,13 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
     const float bx = block->rect.x, by = block->rect.y;
     const ushort bw = block->rect.w, bh = block->rect.h;
 
-    // NOTES: This reads as: If a brick block, or a empty coin block,
-    //        or an empty fire flower block is off screen, skip it.
-    // TODO: Test if this is working later
-    if (block->broken)
-      continue;
-    else if ((block->type == NOTHING ||
-              (block->type == EMPTY && item->type == COINS) ||
-              (block->type == EMPTY && item->type == FIRE_FLOWER)) &&
-             ((bx + bw < 0 || bx > state->screen.w) ||
-              (by + bh < 0 || by > state->screen.h)))
+    // If a block has been broken or is off-screen, skip its collision check
+    if (block->broken || (bx + bw < 0 || bx > state->screen.w) ||
+        (by + bh < 0 || by > state->screen.h))
       continue;
 
     const bool blockCollision =
       (*px < bx + bw && *px + pw > bx) && (*py < by + bh && *py + ph > by);
-    const float initY = block->initY;
 
     if (blockCollision) {
       if (dx > 0)
@@ -50,22 +40,15 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
         *py = by - ph;
         onBlock = true;
       } else if (dy < 0) {
+        // ERROR: When going for the last block a collision bug happens
+        // Block *neighbour = NULL;
+        // if (i + 1 <= state->blocksLenght && player->facingRight) {
+        //   neighbour = &state->blocks[i + 1];
+        //   if (neighbour->rect.x <= player->rect.x + player->rect.w / 2.0)
+        //     continue;
+        // }
         *py = by + bh;
-        // TODO: Later add this coin to player->coinCount
-        if (item->type == COINS && block->coinCount) {
-          block->coinCount--;
-          for (ushort j = 0; j < block->maxCoins; j++) {
-            Coin *coin = &block->coins[j];
-            if (!coin->onAir) {
-              coin->onAir = true;
-              break;
-            } else
-              continue;
-          }
-        }
-        // TODO: Make this condition be done with the side he is oriented
-        //       with, AKA make his fist collide with the bottom half of the
-        //       block for it to get hit
+
         if (block->type != EMPTY)
           block->gotHit = true;
         if (block->type == NOTHING && player->tall)
@@ -77,6 +60,17 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
             block->sprite = EMPTY_SPRITE;
           }
         }
+        // TODO: Later add this coin to player->coinCount
+        if (item->type == COINS && block->coinCount) {
+          block->coinCount--;
+          for (ushort j = 0; j < block->maxCoins; j++) {
+            Coin *coin = &block->coins[j];
+            if (!coin->onAir) {
+              coin->onAir = true;
+              break;
+            }
+          }
+        }
       }
       if (dx)
         player->velocity.x = 0;
@@ -86,79 +80,31 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
       }
     }
 
-    // Block bump
-    if (block->gotHit &&
-        ((!player->tall && block->type == NOTHING) || item->type == COINS)) {
-      const float goal = initY + bh - tile / 4.0f;
-      if (by + bh > goal)
-        block->rect.y -= BLOCK_SPEED;
-      else
-        block->gotHit = false;
-    } else if (by != initY)
-      block->rect.y += BLOCK_SPEED;
-
-    // Item coming out of block
-    if (item->type > COINS && item->free) {
-      if (item->rect.y > initY - tile)
-        item->rect.y -= BLOCK_SPEED;
-      else
-        block->type = EMPTY;
-    }
-
-    // ERROR: For a reason that gods know why, coins come at a Item speed
-    //        when player.velocity.x == 0
-    // Coins coming out of block
-    if (item->type == COINS && item->free) {
-      const float COIN_SPEED = BLOCK_SPEED * 3;
-      for (ushort j = 0; j < block->maxCoins; j++) {
-        Coin *coin = &block->coins[j];
-        if (!coin->onAir)
-          continue;
-
-        if (!coin->willFall && coin->rect.y > initY - tile * 3)
-          coin->rect.y -= COIN_SPEED;
-        else
-          coin->willFall = true;
-
-        if (coin->willFall && coin->rect.y < initY)
-          coin->rect.y += COIN_SPEED;
-        else if (coin->rect.y == initY) {
-          coin->willFall = false;
-          coin->onAir = false;
-        }
-      }
-    }
-
     // Item collison
     if (item->visible && item->free && item->type > COINS) {
       const bool itemCollision =
         (*px < ix + iw && *px + pw > ix) && (*py < iy + ih && *py + ph > iy);
       if (itemCollision) {
         item->visible = false;
-        if (item->type == MUSHROOM && !player->tall) {
+
+        if ((item->type == MUSHROOM || item->type == FIRE_FLOWER) &&
+            !player->tall) {
           player->rect.y -= tile;
           player->rect.h += tile;
           player->hitbox.h = player->rect.h;
-          // TODO: When TALL_TO_FIRE is made uncomment this
-          //       player->tall = true;
           player->transforming = true;
-        } else if (item->type == FIRE_FLOWER && !player->fireForm) {
-          if (!player->tall) {
-            player->rect.y -= tile;
-            player->rect.h += tile;
-            // TODO: Move this when TALL_TO_FIRE is made
-            player->transforming = true;
-          }
+        } else if (item->type == FIRE_FLOWER && !player->fireForm)
           player->fireForm = true;
-        } else if (item->type == STAR)
+        else if (item->type == STAR)
           player->invincible = true;
       }
     }
   }
+
   for (uint i = 0; i < state->objsLength; i++) {
     SDL_Rect obj = state->objs[i];
     const bool collision = (*px < obj.x + obj.w && *px + pw > obj.x) &&
-                            (*py < obj.y + obj.h && *py + ph > obj.y);
+                           (*py < obj.y + obj.h && *py + ph > obj.y);
     if ((obj.x + obj.w < 0 || obj.x > (int)state->screen.w) ||
         (obj.y + obj.h < 0 || obj.y > (int)state->screen.h))
       continue;
@@ -181,3 +127,4 @@ void handlePlayerColl(float dx, float dy, GameState *state) {
   }
   player->onSurface = onBlock || onObj;
 }
+// TODO: Make it so all changes to sprite in this function are moved to render.c

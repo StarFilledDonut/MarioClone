@@ -11,8 +11,8 @@
 #include "gameState.h"
 #include "init.h"
 #include "input.h"
-#include "render.h"
 #include "player.h"
+#include "render.h"
 
 // Takes care of the collision of the fireballs with non-player entities.
 void handleFireballColl(GameState *state, ushort index, float dx, float dy) {
@@ -120,6 +120,3 @@ int main(void) {
   }
 }
 // TODO: Make mushroom and star to move arround
-// TODO: Have an delay on player events on start of the game
-// TODO: Have the bitsX[2] and bitsY[2] since there are only
-//       two X and Y positions the 4 bits can go to

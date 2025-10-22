@@ -97,6 +97,7 @@ typedef struct {
   SDL_Renderer *renderer;
   Block blocks[20];
   SDL_Rect objs[20];
+  // When making multiple Levels, move this to Level
   uint objsLength, blocksLenght;
   Sheets sheets;
   Screen screen;

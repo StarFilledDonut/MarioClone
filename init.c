@@ -5,8 +5,11 @@
 #include "utils.h"
 
 // Create a block in state.blocks
-void createBlock(
-  GameState *state, const int x, const int y, const BlockState tBlock, const ItemType tItem) {
+void createBlock(GameState *state,
+                 const int x,
+                 const int y,
+                 const BlockState tBlock,
+                 const ItemType tItem) {
   BlockSprite sprite;
   if (tBlock == NOTHING || tItem == COINS)
     sprite = BRICK_SPRITE;
@@ -43,10 +46,9 @@ void createBlock(
   state->blocksLenght++;
 
   if (tBlock == NOTHING) {
-    block->item = (Item){{0, 0}, false, false, false, 0, {0, 0, 0, 0}};
+    block->item = (Item) {{0, 0}, false, false, false, 0, {0, 0, 0, 0}};
     return;
-  }
-  else if (tItem == COINS) {
+  } else if (tItem == COINS) {
     block->maxCoins = 10;
     block->coinCount = block->maxCoins;
 
