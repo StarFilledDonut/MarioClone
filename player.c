@@ -4,7 +4,7 @@
 // Handles the collision a axis per time, call this first with dx only,
 // then call it again for the dy.
 // This function will only run for things that are displayed on screen.
-void handlePlayerColl(float dx, float dy, GameState *state) {
+void playerCollision(GameState *state, float dx, float dy) {
   Player *player = &state->player;
   float *px = &player->hitbox.x, *py = &player->hitbox.y;
   const ushort pw = player->hitbox.w, ph = player->hitbox.h;

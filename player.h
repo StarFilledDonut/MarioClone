@@ -3,6 +3,6 @@
 
 #include "gameState.h"
 
-void handlePlayerColl(float dx, float dy, GameState *state);
+void playerCollision(GameState *state, float dx, float dy);
 
 #endif

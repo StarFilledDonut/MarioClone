@@ -5,12 +5,27 @@
 #include <SDL2/SDL_rect.h>
 #include <stdbool.h>
 
+// NOTE: All of these are resolution related
+// TODO: Make these macros global variables initialized
+// in init.c when resolution change is implemented
 #define GRAVITY 0.8f
+
+#define SPEED 0.2f
+#define MAX_SPEED 7
+
+#define JUMP_FORCE 2.5f
+#define MAX_JUMP -15
+
+#define ITEM_SPEED (SPEED * 12)
+#define ITEM_JUMP_FORCE (JUMP_FORCE * 6)
+
+#define FRIC 0.85f
 
 typedef unsigned short ushort;
 
 typedef enum { COINS, MUSHROOM, FIRE_FLOWER, STAR } ItemType;
 typedef enum { NOTHING, FULL, EMPTY } BlockState;
+// Move this to render
 typedef enum {
   SHINY_SPRITE,
   BRICK_SPRITE,
@@ -40,7 +55,9 @@ typedef enum {
   SMALL_TO_FIRE = 78
 } PlayerFrame;
 
-typedef struct { float x, y; } Velocity;
+typedef struct {
+  float x, y;
+} Velocity;
 
 typedef struct {
   Velocity velocity;
@@ -52,7 +69,7 @@ typedef struct {
   Velocity velocity;
   ushort fireballLimit;
   bool tall, fireForm, invincible, transforming, onSurface, holdingJump,
-      jumping, gainingHeigth, facingRight, walking, squatting, firing;
+    jumping, gainingHeigth, facingRight, walking, squatting, firing;
   SDL_FRect rect, hitbox;
   Fireball fireballs[3];
   PlayerFrame frame;

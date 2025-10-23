@@ -5,8 +5,6 @@
 void handleEvents(GameState *state) {
   SDL_Event event;
   Player *player = &state->player;
-  const short MAX_JUMP = -15, MAX_SPEED = 7;
-  const float JUMP_FORCE = 2.5f, SPEED = 0.2f, FRIC = 0.85f;
   const ushort tile = state->screen.tile;
 
   if (player->onSurface) {
@@ -67,8 +65,6 @@ void handleEvents(GameState *state) {
           player->gainingHeigth = false;
         }
         if (keyup == SDLK_s || keyup == SDLK_DOWN) {
-          if (player->squatting)
-            player->rect.y -= tile;
           player->squatting = false;
         }
         break;
@@ -105,8 +101,6 @@ void handleEvents(GameState *state) {
   }
   if (player->onSurface && !walkPressed && (player->tall || player->fireForm) &&
       (key[SDL_SCANCODE_DOWN] || key[SDL_SCANCODE_S])) {
-    if (!player->squatting)
-      player->rect.y += tile;
     player->squatting = true;
   }
   if (((!player->holdingJump && player->onSurface) ||

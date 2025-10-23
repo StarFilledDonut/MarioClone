@@ -4,17 +4,16 @@
 #include "gameState.h"
 #include "utils.h"
 
+// TODO: Add an interrogation block with a single coin
 // Create a block in state.blocks
 void createBlock(GameState *state,
                  const int x,
                  const int y,
                  const BlockState tBlock,
                  const ItemType tItem) {
-  BlockSprite sprite;
+  BlockSprite sprite = INTERROGATION_SPRITE;
   if (tBlock == NOTHING || tItem == COINS)
     sprite = BRICK_SPRITE;
-  else
-    sprite = INTERROGATION_SPRITE;
 
   ushort iw = state->screen.tile;
   if (tItem == COINS)
@@ -62,7 +61,7 @@ void createBlock(GameState *state,
   }
 
   block->item = (Item) {
-    .velocity = {0, 0},
+    .velocity = {ITEM_SPEED, 0},
     .rect = {x, y, iw, state->screen.tile},
     .type = tItem,
     .free = false,

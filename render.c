@@ -4,7 +4,7 @@
 #define BLOCK_SPEED 3
 
 // Bump animation when player hits a Block from below
-void blockAnimation(Block *block, const u_short tile) {
+void blockAnimation(Block *block, const ushort tile) {
   if (block->gotHit) {
     const float goal = block->initY + block->rect.h - tile / 4.0f;
     if (block->rect.y + block->rect.h > goal)
@@ -15,8 +15,8 @@ void blockAnimation(Block *block, const u_short tile) {
     block->rect.y += BLOCK_SPEED;
 }
 
-void itemAnimation(Block *block, const u_short tile) {
-  // block->Item.oming out of block
+// Animate items and coins comming out of the block
+void itemAnimation(Block *block, const ushort tile) {
   if (block->item.type > COINS && block->item.free) {
     if (block->item.rect.y > block->initY - tile)
       block->item.rect.y -= BLOCK_SPEED;
@@ -54,10 +54,10 @@ void handlePlayerFrames(GameState *state) {
   const bool isSmall = !player->tall && !player->fireForm,
              isJumping = player->jumping && !player->squatting,
              isWalking = player->walking && !player->jumping;
-  int animSpeed = fabsf(player->velocity.x * 0.3f);
-  if (!animSpeed)
-    animSpeed = 1;
-  const uint walkFrame = SDL_GetTicks() * animSpeed / 180 % 3;
+  int animationSpeed = fabsf(player->velocity.x * 0.3f);
+  if (!animationSpeed)
+    animationSpeed = 1;
+  const uint walkFrame = SDL_GetTicks() * animationSpeed / 180 % 3;
 
   // TODO: remove !player->tall when TALL_TO_FIRE is made
   if (player->transforming && !player->tall) {
@@ -72,6 +72,7 @@ void handlePlayerFrames(GameState *state) {
       xformTo = SMALL_TO_TALL;
     else
       xformTo = SMALL_TO_FIRE;
+
     player->frame = xformFrame + xformTo;
     player->rect.h = state->screen.tile * 2;
 
@@ -253,17 +254,16 @@ void render(GameState *state) {
         else if (bit.y > (int)screen->h + 1)
           continue;
 
-        const float SPEED = 1.2f * screen->targetFps * screen->deltaTime;
-        const ushort MAX_SPEED = 6, LIMIT = block->initY - tile;
+        const ushort limit = block->initY - tile;
 
         if (*bitDy > -MAX_SPEED && !block->bitFall)
           *bitDy -= SPEED;
-        else if (*bitY <= LIMIT)
+        else if (*bitY <= limit)
           block->bitFall = true;
         if (*bitDx < MAX_SPEED && !block->bitFall)
-          *bitDx += SPEED * screen->targetFps * screen->deltaTime;
+          *bitDx += SPEED;
         if (*bitDy < MAX_SPEED * 1.25f)
-          *bitDy += GRAVITY * screen->targetFps * screen->deltaTime;
+          *bitDy += GRAVITY;
         *bitY += *bitDy;
 
         if (j < 2 && *bitDy < 0)
@@ -295,9 +295,11 @@ void render(GameState *state) {
     Fireball *ball = &player->fireballs[i];
     if (!ball->visible)
       continue;
+
     const ushort fs = tile / 2;
     SDL_Rect fireballrect = {ball->rect.x, ball->rect.y, fs, fs};
     const ushort frame = SDL_GetTicks() / 180 % 4 + 4;
+
     SDL_RenderCopy(state->renderer,
                    sheets->effects,
                    &sheets->srceffects[frame],
