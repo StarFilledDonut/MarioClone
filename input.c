@@ -115,6 +115,8 @@ void handleEvents(GameState *state) {
     player->holdingJump = true;
     player->jumping = true;
   }
+
+  // TODO: Move this to render.c
   // Size handling
   if (!player->squatting && (player->tall || player->fireForm))
     player->rect.h = tile * 2;

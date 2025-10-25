@@ -1,13 +1,4 @@
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_error.h>
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_keyboard.h>
-#include <SDL2/SDL_rect.h>
-#include <SDL2/SDL_render.h>
-#include <SDL2/SDL_rwops.h>
-#include <SDL2/SDL_stdinc.h>
-#include <SDL2/SDL_timer.h>
-#include <SDL2/SDL_video.h>
 #include <stdbool.h>
 #include "gameState.h"
 #include "init.h"
@@ -15,54 +6,60 @@
 #include "player.h"
 #include "render.h"
 
-bool collision_rr(const SDL_Rect *a, const SDL_Rect *b) {
+static bool _collision_rr(const SDL_Rect *a, const SDL_Rect *b) {
   return ((a->x < b->x + b->w && a->x + a->w > b->x) &&
           (a->y < b->y + b->h && a->y + a->h > b->y));
 }
-bool collision_rf(const SDL_Rect *a, const SDL_FRect *b) {
+static bool _collision_rf(const SDL_Rect *a, const SDL_FRect *b) {
   return ((a->x < b->x + b->w && a->x + a->w > b->x) &&
           (a->y < b->y + b->h && a->y + a->h > b->y));
 }
-bool collision_fr(const SDL_FRect *a, const SDL_Rect *b) {
+static bool _collision_fr(const SDL_FRect *a, const SDL_Rect *b) {
   return ((a->x < b->x + b->w && a->x + a->w > b->x) &&
           (a->y < b->y + b->h && a->y + a->h > b->y));
 }
-bool collision_ff(const SDL_FRect *a, const SDL_FRect *b) {
+static bool _collision_ff(const SDL_FRect *a, const SDL_FRect *b) {
   return ((a->x < b->x + b->w && a->x + a->w > b->x) &&
           (a->y < b->y + b->h && a->y + a->h > b->y));
 }
 
+// Calculates the overlaping area of two rectanlge,
+// supporting both SDL_Rect and SDL_FRect
+// @param a The first rectangle
+// @param b The second rectangle
+// @return true if there is a intersection, false otherwise
 #define collision(a, b)                                                        \
   _Generic((a),                                                                \
     SDL_Rect *: _Generic((b),                                                  \
-      SDL_Rect *: collision_rr,                                                \
-      SDL_FRect *: collision_rf,                                               \
-      const SDL_Rect *: collision_rr,                                          \
-      const SDL_FRect *: collision_rf),                                        \
+      SDL_Rect *: _collision_rr,                                               \
+      SDL_FRect *: _collision_rf,                                              \
+      const SDL_Rect *: _collision_rr,                                         \
+      const SDL_FRect *: _collision_rf),                                       \
     SDL_FRect *: _Generic((b),                                                 \
-      SDL_Rect *: collision_fr,                                                \
-      SDL_FRect *: collision_ff,                                               \
-      const SDL_Rect *: collision_fr,                                          \
-      const SDL_FRect *: collision_ff),                                        \
+      SDL_Rect *: _collision_fr,                                               \
+      SDL_FRect *: _collision_ff,                                              \
+      const SDL_Rect *: _collision_fr,                                         \
+      const SDL_FRect *: _collision_ff),                                       \
     const SDL_Rect *: _Generic((b),                                            \
-      SDL_Rect *: collision_rr,                                                \
-      SDL_FRect *: collision_rf,                                               \
-      const SDL_Rect *: collision_rr,                                          \
-      const SDL_FRect *: collision_rf),                                        \
+      SDL_Rect *: _collision_rr,                                               \
+      SDL_FRect *: _collision_rf,                                              \
+      const SDL_Rect *: _collision_rr,                                         \
+      const SDL_FRect *: _collision_rf),                                       \
     const SDL_FRect *: _Generic((b),                                           \
-      SDL_Rect *: collision_fr,                                                \
-      SDL_FRect *: collision_ff,                                               \
-      const SDL_Rect *: collision_fr,                                          \
-      const SDL_FRect *: collision_ff))(a, b)
+      SDL_Rect *: _collision_fr,                                               \
+      SDL_FRect *: _collision_ff,                                              \
+      const SDL_Rect *: _collision_fr,                                         \
+      const SDL_FRect *: _collision_ff))(a, b)
 
+// Takes care of the collision of moving items with non-player entities.
 void itemCollision(GameState *state, const ushort index, float dx, float dy) {
   Item *item = &state->blocks[index].item;
   const ushort isize = state->screen.tile;
 
   if (!item->free || !item->visible || item->type == FIRE_FLOWER)
     return;
-  else if (((item->rect.x + isize < 0 && item->rect.x > state->screen.w) &&
-            (item->rect.y > 0 && item->rect.y + isize < state->screen.h))) {
+  if (((item->rect.x + isize < 0 && item->rect.x > state->screen.w) &&
+       (item->rect.y > 0 && item->rect.y + isize < state->screen.h))) {
     item->visible = false;
     return;
   }
@@ -89,23 +86,22 @@ void itemCollision(GameState *state, const ushort index, float dx, float dy) {
   }
 
   for (uint i = 0; i < state->objsLength; i++) {
-    SDL_Rect obj = state->objs[i];
-    if (!collision(&item->rect, &obj))
+    const SDL_Rect *obj = &state->objs[i];
+    if (!collision(&item->rect, obj))
       continue;
 
     if (dx > 0)
-      item->rect.x = obj.w - isize;
+      item->rect.x = obj->w - isize;
     else if (dx < 0)
-      item->rect.x = obj.w + obj.w;
+      item->rect.x = obj->w + obj->w;
     else if (dy > 0)
-      item->rect.y = obj.y - isize;
+      item->rect.y = obj->y - isize;
     else if (dy < 0)
-      item->rect.y = obj.y + obj.h;
+      item->rect.y = obj->y + obj->h;
     if (dx)
       item->velocity.x *= -1;
     else if (item->type == STAR)
       item->velocity.y = -ITEM_JUMP_FORCE;
-    // ERROR: flickering when colliding with object
     else
       item->velocity.y = 0;
   }
@@ -126,7 +122,7 @@ void fireballCollision(GameState *state, ushort index, float dx, float dy) {
   if (!ball->visible)
     return;
   else if (!((ball->rect.x + fs > 0 && ball->rect.x < state->screen.w) &&
-            (ball->rect.y + fs > 0 && ball->rect.y < state->screen.h))) {
+             (ball->rect.y + fs > 0 && ball->rect.y < state->screen.h))) {
     ball->visible = false;
     return;
   }
@@ -177,7 +173,6 @@ void physics(GameState *state) {
   Player *player = &state->player;
   float dt = state->screen.deltaTime;
   const ushort TARGET_FPS = state->screen.targetFps;
-  const float MAX_GRAVITY = 20;
 
   if (player->squatting && player->hitbox.h == state->screen.tile) {
     player->hitbox.y += state->screen.tile;
@@ -214,10 +209,10 @@ void physics(GameState *state) {
     Item *item = &state->blocks[i].item;
 
     if ((!item->free || !item->visible) || item->type == FIRE_FLOWER ||
-        SDL_HasIntersectionF(&item->rect, &block->rect))
+        collision(&item->rect, &block->rect))
       continue;
     // In the original, default direction is always right
-    // on the following games, the starting direction of an
+    // On the following games, the starting direction of an
     // item depends on your position in relation to the block
 
     item->rect.x += item->velocity.x * TARGET_FPS * dt;
@@ -257,6 +252,10 @@ int main(void) {
     render(&state);
   }
 }
-// FIX: Item collision with objects
-// FIX: Broken block animation
-// FIX: First fireball falling with no collision
+// ERROR: After an item collide with a object, its rect.y decreases by 2 after each loop
+// ERROR: First fireball always falling with no collision
+// ERROR: When the STAR collides with a block by the bottom side ledge
+// it will ignore gravity and sideways bounce to climb the block
+// TODO: Make so that items jump when the player triggers a block bump besides it
+// ERROR: Player will phase upward through the block when it is on the last coin
+// FIX: Make so that the block only update to EMPTY in the last fram of block bump

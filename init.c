@@ -20,32 +20,45 @@ void createBlock(GameState *state,
     iw /= 2;
 
   Block *block = &state->blocks[state->blocksLenght];
-  block->rect = (SDL_FRect) {x, y, state->screen.tile, state->screen.tile};
-  block->initY = y;
-  if (tBlock == NOTHING) {
-    for (ushort i = 0; i < 8; i++) {
-      float *bitX = &block->bitsX[i], *bitY = &block->bitsY[i];
-      if (i == 0 || i == 2)
-        *bitX = x;
-      else if (i == 1 || i == 3)
-        *bitX = x + state->screen.tile / 2.0f;
-      if (i < 2)
-        *bitY = y;
-      else
-        *bitY = y + state->screen.tile / 2.0f;
-    }
-    block->bitDy = 0;
-    block->bitDx = 0;
-    block->bitFall = false;
-  }
-  block->gotHit = false;
-  block->broken = false;
-  block->type = tBlock;
-  block->sprite = sprite;
+  *block = (Block) {
+    .rect = (SDL_FRect) {x, y, state->screen.tile, state->screen.tile},
+    .initY = y,
+    .gotHit = false,
+    .broken = false,
+    .type = tBlock,
+    .sprite = sprite,
+  };
   state->blocksLenght++;
 
   if (tBlock == NOTHING) {
-    block->item = (Item) {{0, 0}, false, false, false, 0, {0, 0, 0, 0}};
+    block->item = (Item) {{0, 0, 0, 0}, {0, 0}, false, false, false, 0};
+    const float size = state->screen.tile / 2.0;
+
+    for (ushort i = 0; i < MAX_BLOCK_PARTICLES; i++) {
+      struct Particle *particle = &block->particles[i];
+
+      // Defining the particles X values by column
+      if (i % 2 == 0) {
+        particle->rect.x = x;
+        particle->velocity.x = -MAX_SPEED * 0.5f;
+      } else {
+        particle->rect.x = x + size;
+        particle->velocity.x = MAX_SPEED * 0.5f;
+      }
+
+      // Defining the particles Y values by row
+      if (i < 2) {
+        particle->rect.y = y;
+        particle->velocity.y = MAX_JUMP * 1.15f;
+      } else {
+        particle->rect.y = y + size;
+        particle->velocity.y = MAX_JUMP;
+      }
+
+      particle->rect.w = size;
+      particle->rect.h = size;
+    }
+
     return;
   } else if (tItem == COINS) {
     block->maxCoins = 10;
@@ -219,7 +232,7 @@ void initGame(GameState *state) {
     .rect = prect,
     .hitbox = {prect.x + tile / 4.0, prect.y, tile / 2.0, prect.h},
     .velocity = {0, 0},
-    .tall = false,
+    .tall = true,
     .fireForm = false,
     .invincible = false,
     .transforming = false,

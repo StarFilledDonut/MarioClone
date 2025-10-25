@@ -1,7 +1,26 @@
 #include <SDL2/SDL.h>
+#include <math.h>
 #include "gameState.h"
 
 #define BLOCK_SPEED 3
+
+// Shattering animation when player breaks a block
+void blockBreakAnimation(struct Particle *particle, const ushort index) {
+  if (particle->velocity.x == 0) {
+    if (index == 0 || index == 2)
+      particle->velocity.x -= SPEED * 1.2f;
+    else
+      particle->velocity.x += SPEED * 1.2f;
+  }
+
+  if (index < 2 && particle->velocity.y < MAX_GRAVITY * 1.5f)
+    particle->velocity.y += GRAVITY;
+  else if (index >= 2 && particle->velocity.y < MAX_GRAVITY * 1.5f)
+    particle->velocity.y += GRAVITY * 1.25f;
+
+  particle->rect.x += particle->velocity.x;
+  particle->rect.y += particle->velocity.y;
+}
 
 // Bump animation when player hits a Block from below
 void blockAnimation(Block *block, const ushort tile) {
@@ -83,6 +102,7 @@ void handlePlayerFrames(GameState *state) {
     } else
       return;
   }
+
   // Star timer
   if (player->invincible) {
     if (!state->screen.starTimer)
@@ -174,7 +194,6 @@ void render(GameState *state) {
   Player *player = &state->player;
   Sheets *sheets = &state->sheets;
   Screen *screen = &state->screen;
-  Block *blocks = state->blocks;
   ushort tile = screen->tile;
 
   SDL_SetRenderDrawColor(state->renderer, 92, 148, 252, 255);
@@ -198,33 +217,33 @@ void render(GameState *state) {
 
   // Rendering blocks
   for (uint i = 0; i < state->blocksLenght; i++) {
-    Block *block = &blocks[i];
+    Block *block = &state->blocks[i];
 
     // Handling item frames
     if (block->type != NOTHING && block->item.visible &&
         block->item.type != COINS) {
       Item *item = &block->item;
-      SDL_Rect dstitem = {
-        item->rect.x, item->rect.y, item->rect.w, item->rect.h};
       ushort frame;
 
       if (item->type == MUSHROOM)
         frame = 0;
       else
         frame = handleItemFrames(item);
-      SDL_RenderCopy(
-        state->renderer, sheets->items, &sheets->srcitems[frame], &dstitem);
+
+      // Rendering Items
+      SDL_RenderCopyF(
+        state->renderer, sheets->items, &sheets->srcitems[frame], &item->rect);
     } else if (block->type != NOTHING && block->item.type == COINS) {
       for (ushort j = 0; j < block->maxCoins; j++) {
         Coin *coin = &block->coins[j];
         if (!coin->onAir)
           continue;
-        SDL_Rect dstcoin = {
-          coin->rect.x, coin->rect.y, coin->rect.w, coin->rect.h};
         ushort frame = handleItemFrames(&block->item);
 
-        SDL_RenderCopy(
-          state->renderer, sheets->items, &sheets->srcitems[frame], &dstcoin);
+        SDL_RenderCopyF(state->renderer,
+                        sheets->items,
+                        &sheets->srcitems[frame],
+                        &coin->rect);
       }
     }
 
@@ -236,45 +255,25 @@ void render(GameState *state) {
     if (block->type != NOTHING)
       itemAnimation(block, screen->tile);
 
-    // Rendering blocks of broken falling bits
+    // Rendering blocks or broken block's particles
     if (!block->broken) {
       SDL_RenderCopyF(state->renderer,
                       sheets->objs,
                       &sheets->srcsobjs[block->sprite],
                       &block->rect);
     } else {
-      ushort bitSize = screen->tile / 2;
-      for (ushort j = 0; j < 4; j++) {
-        float *bitDx = &block->bitDx, *bitDy = &block->bitDy,
-              *bitX = &block->bitsX[j], *bitY = &block->bitsY[j];
-        SDL_Rect bit = {*bitX, *bitY, bitSize, bitSize};
+      for (ushort j = 0; j < MAX_BLOCK_PARTICLES; j++) {
+        struct Particle *particle = &block->particles[j];
 
-        if (block->bitsY[0] > (int)screen->h + 1)
-          break;
-        else if (bit.y > (int)screen->h + 1)
+        if (particle->rect.y >= screen->h)
           continue;
 
-        const ushort limit = block->initY - tile;
+        blockBreakAnimation(particle, j);
 
-        if (*bitDy > -MAX_SPEED && !block->bitFall)
-          *bitDy -= SPEED;
-        else if (*bitY <= limit)
-          block->bitFall = true;
-        if (*bitDx < MAX_SPEED && !block->bitFall)
-          *bitDx += SPEED;
-        if (*bitDy < MAX_SPEED * 1.25f)
-          *bitDy += GRAVITY;
-        *bitY += *bitDy;
-
-        if (j < 2 && *bitDy < 0)
-          *bitY += *bitDy;
-        if (j == 1 || j == 3)
-          *bitX += *bitDx * 0.5f;
-        else
-          *bitX -= *bitDx * 0.5f;
-
-        SDL_RenderCopy(
-          state->renderer, sheets->effects, &sheets->srceffects[j], &bit);
+        SDL_RenderCopyF(state->renderer,
+                        sheets->effects,
+                        &sheets->srceffects[j],
+                        &particle->rect);
       }
     }
   }

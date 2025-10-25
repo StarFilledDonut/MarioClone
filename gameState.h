@@ -9,23 +9,23 @@
 // TODO: Make these macros global variables initialized
 // in init.c when resolution change is implemented
 #define GRAVITY 0.8f
-
+#define MAX_GRAVITY 20
 #define SPEED 0.2f
 #define MAX_SPEED 7
-
 #define JUMP_FORCE 2.5f
 #define MAX_JUMP -15
-
 #define ITEM_SPEED (SPEED * 12)
 #define ITEM_JUMP_FORCE (JUMP_FORCE * 6)
-
 #define FRIC 0.85f
+
+// The maximum ammount of pieces a block can break into
+#define MAX_BLOCK_PARTICLES 4
 
 typedef unsigned short ushort;
 
 typedef enum { COINS, MUSHROOM, FIRE_FLOWER, STAR } ItemType;
 typedef enum { NOTHING, FULL, EMPTY } BlockState;
-// Move this to render
+// TODO: Nest this inside of Block if possible
 typedef enum {
   SHINY_SPRITE,
   BRICK_SPRITE,
@@ -33,6 +33,7 @@ typedef enum {
   INTERROGATION_SPRITE
 } BlockSprite;
 
+// TODO: Add a turning frame
 typedef enum {
   STILL,
   WALK,
@@ -60,41 +61,48 @@ typedef struct {
 } Velocity;
 
 typedef struct {
+  SDL_FRect rect;
   Velocity velocity;
   bool visible;
-  SDL_FRect rect;
 } Fireball;
 
 typedef struct {
+  SDL_FRect rect, hitbox;
   Velocity velocity;
   ushort fireballLimit;
   bool tall, fireForm, invincible, transforming, onSurface, holdingJump,
     jumping, gainingHeigth, facingRight, walking, squatting, firing;
-  SDL_FRect rect, hitbox;
   Fireball fireballs[3];
   PlayerFrame frame;
 } Player;
 
 typedef struct {
+  SDL_FRect rect;
   Velocity velocity;
   bool free, visible, canJump;
   ItemType type;
-  SDL_FRect rect;
 } Item;
 
 typedef struct {
-  bool onAir, willFall;
   SDL_FRect rect;
+  bool onAir, willFall;
 } Coin;
 
 typedef struct {
-  SDL_FRect rect, bits[4];
-  float initY, bitDx, bitDy, bitsX[4], bitsY[4];
-  bool gotHit, broken, bitFall;
+  SDL_FRect rect;
+  struct Particle {
+    SDL_FRect rect;
+    Velocity velocity;
+  } particles[MAX_BLOCK_PARTICLES];
+  // TODO: Remove this
+  float initY;
+  bool gotHit, broken;
   BlockState type;
   BlockSprite sprite;
   Item item;
+  // Maybe implement a linked list instead of a array
   Coin coins[10];
+  // TODO: Merge these two
   ushort maxCoins, coinCount;
 } Block;
 
@@ -112,6 +120,7 @@ typedef struct {
 typedef struct {
   SDL_Window *window;
   SDL_Renderer *renderer;
+  // When reading levels, make it a dynamic array
   Block blocks[20];
   SDL_Rect objs[20];
   // When making multiple Levels, move this to Level
