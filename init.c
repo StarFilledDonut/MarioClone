@@ -233,12 +233,20 @@ void initGame(GameState *state) {
     .hitbox = {prect.x + tile / 4.0, prect.y, tile / 2.0, prect.h},
     .velocity = {0, 0},
     .tall = true,
-    .fireForm = false,
+    .fireForm = true,
     .invincible = false,
     .transforming = false,
     .facingRight = true,
-    .frame = 0,
-    .fireballLimit = 4};
+    .frame = STILL,
+  };
+
+  for (ushort i = 0; i < MAX_FIREBALLS; i++) {
+    player.fireballs[i] = (Fireball) {
+      .rect = (SDL_FRect) {0, prect.y, screen.tile / 2.0, screen.tile / 2.0},
+      .velocity = {0, MAX_SPEED},
+      .visible = false};
+  }
+
   state->player = player;
 
   if (player.tall || player.fireForm) {

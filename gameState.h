@@ -20,6 +20,7 @@
 
 // The maximum ammount of pieces a block can break into
 #define MAX_BLOCK_PARTICLES 4
+#define MAX_FIREBALLS 3
 
 typedef unsigned short ushort;
 
@@ -44,13 +45,13 @@ typedef enum {
   TALL_WALK,
   TALL_TURNING = 32,
   TALL_JUMP,
-  TALL_SQUATTING,
+  TALL_CROUNCHING,
   STAR_TALL,
   FIRE_STILL = 35 + 7 * 3,
   FIRE_WALK,
   FIRE_TURNING = 60,
   FIRE_JUMP,
-  FIRE_SQUATTING,
+  FIRE_CROUNCHING,
   FIRE_FIRING,
   SMALL_TO_TALL = 75,
   SMALL_TO_FIRE = 78
@@ -69,11 +70,11 @@ typedef struct {
 typedef struct {
   SDL_FRect rect, hitbox;
   Velocity velocity;
-  ushort fireballLimit;
+  // TODO: Remove a lot of these
   bool tall, fireForm, invincible, transforming, onSurface, holdingJump,
-    jumping, gainingHeigth, facingRight, walking, squatting, firing;
-  Fireball fireballs[3];
+    jumping, gainingHeigth, facingRight, walking, crounching, firing;
   PlayerFrame frame;
+  Fireball fireballs[MAX_FIREBALLS];
 } Player;
 
 typedef struct {

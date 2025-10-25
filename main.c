@@ -77,6 +77,7 @@ void itemCollision(GameState *state, const ushort index, float dx, float dy) {
       item->rect.y = block->y - isize;
     else if (dy < 0)
       item->rect.y = block->y + block->h;
+
     if (dx)
       item->velocity.x = -item->velocity.x;
     else if (item->type == STAR)
@@ -98,6 +99,7 @@ void itemCollision(GameState *state, const ushort index, float dx, float dy) {
       item->rect.y = obj->y - isize;
     else if (dy < 0)
       item->rect.y = obj->y + obj->h;
+
     if (dx)
       item->velocity.x *= -1;
     else if (item->type == STAR)
@@ -117,7 +119,7 @@ void itemCollision(GameState *state, const ushort index, float dx, float dy) {
 // Takes care of the collision of the fireballs with non-player entities.
 void fireballCollision(GameState *state, ushort index, float dx, float dy) {
   Fireball *ball = &state->player.fireballs[index];
-  const ushort fs = state->screen.tile / 2;
+  const float fs = state->screen.tile / 2.0;
 
   if (!ball->visible)
     return;
@@ -129,7 +131,7 @@ void fireballCollision(GameState *state, ushort index, float dx, float dy) {
 
   for (uint i = 0; i < state->blocksLenght; i++) {
     const SDL_FRect *block = &state->blocks[i].rect;
-    const ushort bs = state->screen.tile;
+    const float bs = state->screen.tile;
 
     if (!collision(&ball->rect, block) || state->blocks[i].broken)
       continue;
@@ -142,6 +144,7 @@ void fireballCollision(GameState *state, ushort index, float dx, float dy) {
       ball->rect.y = block->y - fs;
     else if (dy < 0)
       ball->rect.y = block->y + bs;
+
     if (dx)
       ball->velocity.x *= -1;
     else
@@ -149,7 +152,7 @@ void fireballCollision(GameState *state, ushort index, float dx, float dy) {
   }
 
   for (uint i = 0; i < state->objsLength; i++) {
-    SDL_Rect *obj = &state->objs[i];
+    const SDL_Rect *obj = &state->objs[i];
     if (!collision(&ball->rect, obj))
       continue;
 
@@ -161,6 +164,7 @@ void fireballCollision(GameState *state, ushort index, float dx, float dy) {
       ball->rect.y = obj->y - fs;
     else if (dy < 0)
       ball->rect.y = obj->y + obj->h;
+
     if (dx)
       ball->velocity.x *= -1;
     else
@@ -174,12 +178,12 @@ void physics(GameState *state) {
   float dt = state->screen.deltaTime;
   const ushort TARGET_FPS = state->screen.targetFps;
 
-  if (player->squatting && player->hitbox.h == state->screen.tile) {
+  if (player->crounching && player->hitbox.h == state->screen.tile * 2) {
     player->hitbox.y += state->screen.tile;
-    player->hitbox.h -= state->screen.tile;
-  } else if (player->tall && player->hitbox.h != state->screen.tile * 2) {
+    player->hitbox.h = state->screen.tile;
+  } else if (!player->crounching && player->hitbox.h != state->screen.tile * 2) {
     player->hitbox.y -= state->screen.tile;
-    player->hitbox.h += state->screen.tile;
+    player->hitbox.h = state->screen.tile * 2;
   }
 
   if (player->velocity.x) {
@@ -192,7 +196,8 @@ void physics(GameState *state) {
   player->hitbox.y += player->velocity.y * TARGET_FPS * dt;
   playerCollision(state, 0, player->velocity.y);
 
-  for (ushort i = 0; i < player->fireballLimit; i++) {
+  // Fireballs collision
+  for (ushort i = 0; i < MAX_FIREBALLS; i++) {
     Fireball *ball = &player->fireballs[i];
     if (!ball->visible)
       continue;
@@ -204,6 +209,7 @@ void physics(GameState *state) {
     fireballCollision(state, i, 0, ball->velocity.y);
   }
 
+  // Items collision
   for (uint i = 0; i < state->blocksLenght; i++) {
     Block *block = &state->blocks[i];
     Item *item = &state->blocks[i].item;
@@ -230,7 +236,7 @@ void physics(GameState *state) {
     player->rect.x = state->screen.h / 2.0f - player->rect.w;
   }
 
-  player->rect.y = player->squatting ? player->hitbox.y + state->screen.tile
+  player->rect.y = player->crounching ? player->hitbox.y - state->screen.tile
                                      : player->hitbox.y;
   player->rect.x = player->hitbox.x;
   player->rect.x -= state->screen.tile / 4.0;
@@ -252,10 +258,12 @@ int main(void) {
     render(&state);
   }
 }
-// ERROR: After an item collide with a object, its rect.y decreases by 2 after each loop
-// ERROR: First fireball always falling with no collision
-// ERROR: When the STAR collides with a block by the bottom side ledge
+// ERROR: After an item collide with a object, its rect.y decreases by 2 after
+// each loop ERROR: When the STAR collides with a block by the bottom side ledge
 // it will ignore gravity and sideways bounce to climb the block
-// TODO: Make so that items jump when the player triggers a block bump besides it
-// ERROR: Player will phase upward through the block when it is on the last coin
-// FIX: Make so that the block only update to EMPTY in the last fram of block bump
+// TODO: Add a delay from wich is possible the player to fire fireballs with the
+// key held
+// TODO: Make so that items jump when the player triggers a block bump besides
+// it ERROR: Player will phase upward through the block when it is on the last
+// coin FIX: Make so that the block only update to EMPTY in the last fram of
+// block bump

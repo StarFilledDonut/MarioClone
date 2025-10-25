@@ -1,4 +1,6 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_render.h>
+#include <SDL2/SDL_surface.h>
 #include <math.h>
 #include "gameState.h"
 
@@ -71,7 +73,7 @@ void itemAnimation(Block *block, const ushort tile) {
 void handlePlayerFrames(GameState *state) {
   Player *player = &state->player;
   const bool isSmall = !player->tall && !player->fireForm,
-             isJumping = player->jumping && !player->squatting,
+             isJumping = player->jumping && !player->crounching,
              isWalking = player->walking && !player->jumping;
   int animationSpeed = fabsf(player->velocity.x * 0.3f);
   if (!animationSpeed)
@@ -140,8 +142,8 @@ void handlePlayerFrames(GameState *state) {
     else
       player->frame = walkFrame + TALL_WALK;
 
-    if (player->squatting)
-      player->frame = TALL_SQUATTING;
+    if (player->crounching)
+      player->frame = TALL_CROUNCHING;
   } else {
     if (isJumping)
       player->frame = FIRE_JUMP;
@@ -150,8 +152,8 @@ void handlePlayerFrames(GameState *state) {
     else
       player->frame = walkFrame + FIRE_WALK;
 
-    if (player->squatting)
-      player->frame = FIRE_SQUATTING;
+    if (player->crounching)
+      player->frame = FIRE_CROUNCHING;
     if (player->firing && !isWalking && !isJumping)
       player->frame = FIRE_FIRING;
     else if (player->firing && isWalking)
@@ -278,10 +280,15 @@ void render(GameState *state) {
     }
   }
 
-  if (player->squatting) {
-    player->rect.h += tile;
-    player->rect.y -= tile;
-  }
+  // Size handling
+  if (player->tall || player->fireForm)
+    player->rect.h = tile * 2;
+  else
+    player->rect.h = tile;
+
+  // TODO: Add a debug mode to see all collisions
+  // SDL_RenderDrawRectF(state->renderer, &player->hitbox);
+
   SDL_RenderCopyExF(state->renderer,
                     sheets->mario,
                     &sheets->srcmario[player->frame],
@@ -290,19 +297,18 @@ void render(GameState *state) {
                     NULL,
                     player->facingRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL);
 
-  for (ushort i = 0; i < player->fireballLimit && player->fireForm; i++) {
+  // Rendering fireballs
+  for (ushort i = 0; i < MAX_FIREBALLS; i++) {
     Fireball *ball = &player->fireballs[i];
     if (!ball->visible)
       continue;
 
-    const ushort fs = tile / 2;
-    SDL_Rect fireballrect = {ball->rect.x, ball->rect.y, fs, fs};
     const ushort frame = SDL_GetTicks() / 180 % 4 + 4;
 
-    SDL_RenderCopy(state->renderer,
-                   sheets->effects,
-                   &sheets->srceffects[frame],
-                   &fireballrect);
+    SDL_RenderCopyF(state->renderer,
+                    sheets->effects,
+                    &sheets->srceffects[frame],
+                    &ball->rect);
   }
   SDL_RenderPresent(state->renderer);
 }
