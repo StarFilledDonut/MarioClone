@@ -85,11 +85,7 @@ int main(void) {
     render(&state);
   }
 }
-// ERROR: After an item collide with a object, its rect.y decreases by 2 after
-// each loop
 // ERROR: When the STAR collides with a block by the bottom side ledge
-// it will ignore gravity and sideways bounce to climb the block
+// it will ignore gravity and sideways bounce and istead climb the block
 // TODO: Add a delay from wich is possible the player to fire fireballs with the
 // key held
-// ERROR: Player will phase upward through the block when it is on the last
-// coin

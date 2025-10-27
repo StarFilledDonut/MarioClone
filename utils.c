@@ -3,9 +3,9 @@
 #include "gameState.h"
 
 // Destroy everything that was initialized from SDL then exit the program.
-// @param *state Your instance of GameState
-// @param __status The status shown after exting
-void quit(GameState *state, ushort __status) {
+// @param *state: Your instance of GameState
+// @param __status: The status shown after exting
+void quit(GameState *state, int __status) {
   Sheets *sheets = &state->sheets;
   if (sheets->effects)
     SDL_DestroyTexture(sheets->effects);
@@ -55,9 +55,12 @@ void getsrcs(SDL_Rect srcs[],
   }
 }
 
-// Remember to free the str after using it, needs state in case of an allocation
-// error
-// @return char * path + file
+// Allocates memory and concatenates the path and file strings
+// @param state: Current pre-initialized GameState
+// @param path: A directory path
+// @param file: A file in that directory
+// @return Concatenation of the path string and file string
+// @note Free the string after using it
 char *catpath(GameState *state, const char *path, const char *file) {
   char *result = malloc(strlen(path) + strlen(file) + 1);
   if (result == NULL) {

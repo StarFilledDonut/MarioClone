@@ -2,11 +2,35 @@
 #include <SDL2/SDL_rect.h>
 #include "gameState.h"
 
+int ycollision(SDL_FRect a,
+               const Velocity velocity,
+               const SDL_FRect b,
+               const int step) {
+  if (step < 1 || SDL_FRectEmpty(&a) || SDL_FRectEmpty(&b))
+    return 0;
+
+  const bool yforward = velocity.y > 0;
+  const float ygoal = a.y + velocity.y;
+  while (a.y != ygoal) {
+    a.y += yforward ? step : -step;
+
+    if ((yforward && a.y > ygoal) || (!yforward && a.y < ygoal))
+      a.y = ygoal;
+
+    if (!SDL_HasIntersectionF(&a, &b))
+      continue;
+
+    return -1;
+  }
+
+  return 0;
+}
+
 // Uses CCD to calculate acurately where and who is colliding
-// @param a The collider rectangle
-// @param velocity The collider velocity
-// @param b The object rectangle
-// @param step The positive number of steps incremented each iteration
+// @param a: The collider rectangle
+// @param velocity: The collider velocity
+// @param b: The object rectangle
+// @param step: The positive number of steps incremented each iteration
 // @return 0 for no collision, 1 for X collision and -1 for Y collision
 int continuousCollision(SDL_FRect a,
                         const Velocity velocity,
@@ -45,9 +69,9 @@ int continuousCollision(SDL_FRect a,
 }
 
 // Repositions the collider based from where it hit the object
-// @param a The collider rectangle
-// @param b The object rectangle
-// @param axis The axis from wich collision was detected from continuousCollision
+// @param a: The collider rectangle
+// @param b: The object rectangle
+// @param axis: The axis from wich collision was detected from continuousCollision
 void resolveCollision(SDL_FRect *const a, const SDL_FRect *const b, const int axis) {
   if (a == NULL || b == NULL || SDL_FRectEmpty(a) || SDL_FRectEmpty(b) || !axis)
     return;
@@ -109,8 +133,13 @@ void itemCollision(GameState *state, const ushort index) {
 
   for (uint i = 0; i < state->objsLength; i++) {
     const SDL_FRect *const object = &state->objs[i];
-    const int result = continuousCollision(
-      item->rect, item->velocity, *object, state->screen.tile / 2);
+    // const int result = continuousCollision(
+    //   item->rect, item->velocity, *object, state->screen.tile / 2);
+    // ERROR: Collision detection methods that use the velocity of the item
+    // cause item hopping for some reason
+    // FIX IDEA: Implement object after velocity application
+    // NOTE: Temporary trick to stop item hopping
+    const int result = item->rect.y > object->y - item->rect.h * 1.25 ? -1 : 0;
 
     if (!result)
       continue;
@@ -294,7 +323,6 @@ void playerCollision(GameState *state) {
     if (result < 0 && player->velocity.y > 0 && object->y > player->hitbox.y)
       player->onSurface = true;
 
-    // TODO: Remake all jump code for this to work together with it
     resolveCollision(&player->hitbox, object, result);
 
     if (result > 0)
