@@ -91,7 +91,5 @@ int main(void) {
 // it will ignore gravity and sideways bounce to climb the block
 // TODO: Add a delay from wich is possible the player to fire fireballs with the
 // key held
-// TODO: Make so that items jump when the player triggers a block bump besides
-// it
 // ERROR: Player will phase upward through the block when it is on the last
 // coin

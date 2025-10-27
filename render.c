@@ -209,14 +209,14 @@ void render(GameState *state) {
   SDL_RenderDrawLine(state->renderer, 0, screen->h, screen->w, screen->h);
 
   SDL_Rect srcground = {0, 16, 32, 32};
-  SDL_Rect dstground = {0, screen->h - tile * 2, tile * 2, tile * 2};
+  SDL_FRect dstground = {0, screen->h - tile * 2, tile * 2, tile * 2};
 
   // Rendering ground
   // TODO: This method is very limitating, because it does not follow a map
-  // NOTE:  This must be behind the block breaking bits
+  // NOTE: This must be behind the block breaking bits
   for (uint i = 0; i < state->objsLength; i++) {
     state->objs[i] = dstground;
-    SDL_RenderCopy(state->renderer, sheets->objs, &srcground, &dstground);
+    SDL_RenderCopyF(state->renderer, sheets->objs, &srcground, &dstground);
     dstground.x += dstground.w;
   }
 

@@ -48,17 +48,17 @@ int continuousCollision(SDL_FRect a,
 // @param a The collider rectangle
 // @param b The object rectangle
 // @param axis The axis from wich collision was detected from continuousCollision
-void resolveCollision(SDL_FRect *const a, const Velocity velocity, const SDL_FRect *const b, const int axis) {
+void resolveCollision(SDL_FRect *const a, const SDL_FRect *const b, const int axis) {
   if (a == NULL || b == NULL || SDL_FRectEmpty(a) || SDL_FRectEmpty(b) || !axis)
     return;
 
   if (axis > 0) {
-    if (velocity.x > 0)
+    if (a->x < b->x)
       a->x = b->x - a->w;
     else
       a->x = b->x + b->w;
   } else {
-    if (velocity.y > 0)
+    if (a->y < b->y)
       a->y = b->y - a->h;
     else
       a->y = b->y + b->h;
@@ -97,7 +97,7 @@ void itemCollision(GameState *state, const ushort index) {
       continue;
     }
 
-    resolveCollision(&item->rect, item->velocity, &block->rect, result);
+    resolveCollision(&item->rect, &block->rect, result);
 
     if (result > 0)
       item->velocity.x = -item->velocity.x;
@@ -108,15 +108,14 @@ void itemCollision(GameState *state, const ushort index) {
   }
 
   for (uint i = 0; i < state->objsLength; i++) {
-    const SDL_Rect *const _obj = &state->objs[i];
-    const SDL_FRect object = (SDL_FRect) {_obj->x, _obj->y, _obj->w, _obj->h};
+    const SDL_FRect *const object = &state->objs[i];
     const int result = continuousCollision(
-      item->rect, item->velocity, object, state->screen.tile / 2);
+      item->rect, item->velocity, *object, state->screen.tile / 2);
 
     if (!result)
       continue;
 
-    resolveCollision(&item->rect, item->velocity, &object, result);
+    resolveCollision(&item->rect, object, result);
 
     if (result > 0)
       item->velocity.x = -item->velocity.x;
@@ -160,7 +159,7 @@ void fireballCollision(GameState *state, const ushort index) {
     if (!result)
       continue;
 
-    resolveCollision(&ball->rect, ball->velocity, block, result);
+    resolveCollision(&ball->rect, block, result);
 
     if (result > 0)
       ball->velocity.x *= -1;
@@ -169,16 +168,15 @@ void fireballCollision(GameState *state, const ushort index) {
   }
 
   for (uint i = 0; i < state->objsLength; i++) {
-    const SDL_Rect *const _obj = &state->objs[i];
-    const SDL_FRect object = (SDL_FRect) {_obj->x, _obj->y, _obj->w, _obj->h};
+    const SDL_FRect *const object = &state->objs[i];
 
     const int result = continuousCollision(
-      ball->rect, ball->velocity, object, state->screen.tile / 2);
+      ball->rect, ball->velocity, *object, state->screen.tile / 2);
 
     if (!result)
       continue;
 
-    resolveCollision(&ball->rect, ball->velocity, &object, result);
+    resolveCollision(&ball->rect, object, result);
 
     if (result > 0)
       ball->velocity.x *= -1;
@@ -211,7 +209,7 @@ void playerCollision(GameState *state) {
     if (result < 0 && player->velocity.y > 0 && block->rect.y > player->hitbox.y)
       player->onSurface = true;
 
-    resolveCollision(&player->hitbox, player->velocity, &block->rect, result);
+    resolveCollision(&player->hitbox, &block->rect, result);
 
     // ERROR: When going for the last block a collision bug happens
     // Block *neighbour = NULL;
@@ -281,24 +279,23 @@ void playerCollision(GameState *state) {
 
   // Player with object collision
   for (uint i = 0; i < state->objsLength; i++) {
-    SDL_Rect *const _obj = &state->objs[i];
-    const SDL_FRect object = (SDL_FRect) {_obj->x, _obj->y, _obj->w, _obj->h};
+    const SDL_FRect *const object = &state->objs[i];
 
-    if ((object.x + object.w < 0 || object.x > state->screen.w) ||
-        (object.y + object.h < 0 || object.y > state->screen.h))
+    if ((object->x + object->w < 0 || object->x > state->screen.w) ||
+        (object->y + object->h < 0 || object->y > state->screen.h))
       continue;
 
     const int result = continuousCollision(
-      player->hitbox, player->velocity, object, state->screen.tile / 2);
+      player->hitbox, player->velocity, *object, state->screen.tile / 2);
 
     if (!result)
       continue;
 
-    if (result < 0 && player->velocity.y > 0 && object.y > player->hitbox.y)
+    if (result < 0 && player->velocity.y > 0 && object->y > player->hitbox.y)
       player->onSurface = true;
 
     // TODO: Remake all jump code for this to work together with it
-    resolveCollision(&player->hitbox, player->velocity, &object, result);
+    resolveCollision(&player->hitbox, object, result);
 
     if (result > 0)
       player->velocity.x = 0;

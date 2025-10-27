@@ -123,7 +123,7 @@ typedef struct {
   SDL_Renderer *renderer;
   // When reading levels, make it a dynamic array
   Block blocks[20];
-  SDL_Rect objs[20];
+  SDL_FRect objs[20];
   // When making multiple Levels, move this to Level
   uint objsLength, blocksLenght;
   Sheets sheets;
