@@ -1,4 +1,6 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_keycode.h>
+#include <SDL2/SDL_scancode.h>
 #include "gameState.h"
 #include "utils.h"
 
@@ -6,11 +8,7 @@
 void handleEvents(GameState *state) {
   SDL_Event event;
   Player *player = &state->player;
-
-  if (player->onSurface) {
-    player->gainingHeigth = false;
-    player->jumping = false;
-  }
+  static bool holdingJump = false;
 
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
@@ -31,6 +29,7 @@ void handleEvents(GameState *state) {
             if (!player->fireForm || player->crounching)
               break;
 
+            // Finding an available fireball slot
             ushort ballCount = 0, emptySlot = 0;
             for (ushort i = 0; i < MAX_FIREBALLS; i++) {
               if (player->fireballs[i].visible)
@@ -66,13 +65,15 @@ void handleEvents(GameState *state) {
       case SDL_KEYUP: {
         if (event.key.repeat != 0)
           break;
+
         const SDL_Keycode keyup = event.key.keysym.sym;
-        if (keyup == SDLK_SPACE || keyup == SDLK_w || keyup == SDLK_UP) {
+        if ((player->jumping || !player->velocity.y) && (keyup == SDLK_SPACE || keyup == SDLK_w || keyup == SDLK_UP)) {
           if (player->velocity.y < 0)
-            player->velocity.y *= FRIC;
-          player->holdingJump = false;
-          player->gainingHeigth = false;
+            player->velocity.y = player->velocity.y * 0.5;
+          else
+            holdingJump = false;
         }
+
         if (keyup == SDLK_s || keyup == SDLK_DOWN) {
           player->crounching = false;
         }
@@ -80,12 +81,15 @@ void handleEvents(GameState *state) {
       }
     }
   }
+
   bool walkPressed = false;
   const Uint8 *key = SDL_GetKeyboardState(NULL);
+
   if (!player->crounching && (key[SDL_SCANCODE_LEFT] || key[SDL_SCANCODE_A])) {
     player->facingRight = false;
     player->walking = true;
     walkPressed = true;
+
     if (player->velocity.x > 0)
       player->velocity.x *= FRIC;
     if (player->velocity.x > -MAX_SPEED)
@@ -95,6 +99,7 @@ void handleEvents(GameState *state) {
     player->facingRight = true;
     player->walking = true;
     walkPressed = true;
+
     if (player->velocity.x < 0)
       player->velocity.x *= FRIC;
     if (player->velocity.x < MAX_SPEED)
@@ -102,27 +107,23 @@ void handleEvents(GameState *state) {
   } else {
     if (player->velocity.x) {
       player->velocity.x *= FRIC;
+
       if (fabsf(player->velocity.x) < 0.1f)
         player->velocity.x = 0;
     } else
       player->walking = false;
     walkPressed = false;
   }
-  if (player->onSurface && !walkPressed && (player->tall || player->fireForm) &&
+
+  if (!player->velocity.y && !walkPressed && player->tall &&
       (key[SDL_SCANCODE_DOWN] || key[SDL_SCANCODE_S])) {
     player->crounching = true;
   }
-  if (((!player->holdingJump && player->onSurface) ||
-       (!player->onSurface && player->gainingHeigth)) &&
-      (key[SDL_SCANCODE_SPACE] || key[SDL_SCANCODE_W] ||
-       key[SDL_SCANCODE_UP])) {
-    player->velocity.y -= JUMP_FORCE;
-    if (player->velocity.y < MAX_JUMP)
-      player->gainingHeigth = false;
-    else
-      player->gainingHeigth = true;
-    player->holdingJump = true;
+
+  if (player->onSurface && !holdingJump && key[SDL_SCANCODE_UP]) {
+    player->velocity.y = MAX_JUMP * 1.25;
     player->jumping = true;
+    holdingJump = true;
   }
 
   // NOTES: TEMPORARY CEILING AND LEFT WALL

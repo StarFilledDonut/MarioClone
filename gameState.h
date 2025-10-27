@@ -71,8 +71,8 @@ typedef struct {
   SDL_FRect rect, hitbox;
   Velocity velocity;
   // TODO: Remove a lot of these
-  bool tall, fireForm, invincible, transforming, onSurface, holdingJump,
-    jumping, gainingHeigth, facingRight, walking, crounching, firing;
+  bool tall, fireForm, invincible, transforming, onSurface,
+    jumping, facingRight, walking, crounching, firing;
   PlayerFrame frame;
   Fireball fireballs[MAX_FIREBALLS];
 } Player;

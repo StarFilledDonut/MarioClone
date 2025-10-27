@@ -73,14 +73,17 @@ void itemAnimation(Block *block, const ushort tile) {
 void handlePlayerFrames(GameState *state) {
   Player *player = &state->player;
   const bool isSmall = !player->tall && !player->fireForm,
-             isJumping = player->jumping && !player->crounching,
-             isWalking = player->walking && !player->jumping;
+             jump = player->jumping && !player->crounching,
+             walking = player->walking && !player->jumping;
+
   int animationSpeed = fabsf(player->velocity.x * 0.3f);
+
   if (!animationSpeed)
     animationSpeed = 1;
+
   const uint walkFrame = SDL_GetTicks() * animationSpeed / 180 % 3;
 
-  // TODO: remove !player->tall when TALL_TO_FIRE is made
+  // Transofrmation animation
   if (player->transforming && !player->tall) {
     if (!state->screen.xformTimer)
       state->screen.xformTimer = SDL_GetTicks();
@@ -99,7 +102,6 @@ void handlePlayerFrames(GameState *state) {
 
     if (elapsedTime >= 2000) {
       player->transforming = false;
-      // TODO: Make an animation for TALL_TO_FIRE
       player->tall = true;
     } else
       return;
@@ -128,16 +130,16 @@ void handlePlayerFrames(GameState *state) {
   }
 
   if (isSmall) {
-    if (isJumping)
+    if (jump)
       player->frame = JUMP;
-    else if (!isWalking)
+    else if (!walking)
       player->frame = STILL;
     else
       player->frame = walkFrame + WALK;
   } else if (player->tall && !player->fireForm) {
-    if (isJumping)
+    if (jump)
       player->frame = TALL_JUMP;
-    else if (!isWalking)
+    else if (!walking)
       player->frame = TALL_STILL;
     else
       player->frame = walkFrame + TALL_WALK;
@@ -145,23 +147,24 @@ void handlePlayerFrames(GameState *state) {
     if (player->crounching)
       player->frame = TALL_CROUNCHING;
   } else {
-    if (isJumping)
+    if (jump)
       player->frame = FIRE_JUMP;
-    else if (!isWalking)
+    else if (!walking)
       player->frame = FIRE_STILL;
     else
       player->frame = walkFrame + FIRE_WALK;
 
     if (player->crounching)
       player->frame = FIRE_CROUNCHING;
-    if (player->firing && !isWalking && !isJumping)
+    if (player->firing && !walking && !jump)
       player->frame = FIRE_FIRING;
-    else if (player->firing && isWalking)
+    else if (player->firing && walking)
       player->frame = walkFrame + FIRE_FIRING;
-    else if (player->firing && isJumping)
+    else if (player->firing && jump)
       player->frame = FIRE_FIRING + 1;
   }
 
+  // Star form animation
   if (player->invincible) {
     const uint starFrame = SDL_GetTicks() / 90 % 4;
     if (!player->fireForm)
