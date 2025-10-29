@@ -102,7 +102,6 @@ void handlePlayerFrames(GameState *state) {
       xformTo = SMALL_TO_FIRE;
 
     player->frame = xformFrame + xformTo;
-    player->rect.h = state->screen.tile * 2;
 
     if (elapsedTime >= 2000) {
       player->transforming = false;
@@ -267,8 +266,8 @@ void render(GameState *state) {
     // Rendering blocks or broken block's particles
     if (!block->broken) {
       // Animating blocks
-      if (block->type != EMPTY &&
-          (block->gotHit || block->rect.y != block->initY))
+      if ((block->type != EMPTY && block->gotHit) ||
+          block->rect.y != block->initY)
         blockAnimation(block, screen->tile);
 
       SDL_RenderCopyF(state->renderer,
@@ -293,7 +292,7 @@ void render(GameState *state) {
   }
 
   // Size handling
-  if (player->tall || player->fireForm)
+  if (player->tall || player->fireForm || player->transforming)
     player->rect.h = tile * 2;
   else
     player->rect.h = tile;

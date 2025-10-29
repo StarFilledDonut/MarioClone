@@ -214,7 +214,7 @@ void playerCollision(GameState *state) {
         (block->rect.y + block->rect.h < 0 || block->rect.y > state->screen.h))
       continue;
 
-    const int result = collision(
+    int result = collision(
       player->hitbox, player->velocity, block->rect, state->screen.tile);
 
     if (!result && !item->free)
@@ -223,6 +223,14 @@ void playerCollision(GameState *state) {
     if (result < 0 && player->velocity.y > 0 &&
         block->rect.y > player->hitbox.y)
       player->onSurface = true;
+
+    // ERROR: Player hitbox is resolved uncorrectly when the collider is the
+    // block
+    if (block->rect.y != block->initY &&
+        block->rect.y + block->rect.h > player->hitbox.y + player->velocity.y &&
+        result > 0) {
+      result = -1;
+    }
 
     resolveCollision(&player->hitbox, &block->rect, result);
 
@@ -240,7 +248,9 @@ void playerCollision(GameState *state) {
       if (player->velocity.y < 0) {
         if (block->type == NOTHING && player->tall)
           block->broken = true;
-        block->gotHit = true;
+
+        if (!item->free || block->coinCount)
+          block->gotHit = true;
 
         if (block->type == FULL)
           item->free = true;
