@@ -1,0 +1,29 @@
+BasedOnStyle: LLVM
+Language: C
+
+ColumnLimit: 80
+IndentWidth: 2
+ContinuationIndentWidth: 2
+IndentCaseLabels: true
+
+SortIncludes: true
+IncludeCategories:
+  - Regex: '^<.*\.h>'
+    Priority: 1
+  - Regex: '^<.*>'
+    Priority: 2
+  - Regex: '^".*"'
+    Priority: 3
+
+AlignAfterOpenBracket: Align
+BinPackArguments: false
+BinPackParameters: false
+
+AllowAllArgumentsOnNextLine: true
+AllowShortBlocksOnASingleLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+
+Cpp11BracedListStyle: true
+SpaceBeforeCpp11BracedList: true
+
+AlignTrailingComments: true
