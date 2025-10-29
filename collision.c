@@ -1,30 +1,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_rect.h>
+#include <SDL2/SDL_stdinc.h>
 #include "gameState.h"
-
-int ycollision(SDL_FRect a,
-               const Velocity velocity,
-               const SDL_FRect b,
-               const int step) {
-  if (step < 1 || SDL_FRectEmpty(&a) || SDL_FRectEmpty(&b))
-    return 0;
-
-  const bool yforward = velocity.y > 0;
-  const float ygoal = a.y + velocity.y;
-  while (a.y != ygoal) {
-    a.y += yforward ? step : -step;
-
-    if ((yforward && a.y > ygoal) || (!yforward && a.y < ygoal))
-      a.y = ygoal;
-
-    if (!SDL_HasIntersectionF(&a, &b))
-      continue;
-
-    return -1;
-  }
-
-  return 0;
-}
 
 // Uses CCD to calculate acurately where and who is colliding
 // @param a: The collider rectangle
@@ -32,15 +9,16 @@ int ycollision(SDL_FRect a,
 // @param b: The object rectangle
 // @param step: The positive number of steps incremented each iteration
 // @return 0 for no collision, 1 for X collision and -1 for Y collision
-int continuousCollision(SDL_FRect a,
-                        const Velocity velocity,
-                        const SDL_FRect b,
-                        const int step) {
+int collision(SDL_FRect a,
+              const Velocity velocity,
+              const SDL_FRect b,
+              const int step) {
   if (step < 1 || SDL_FRectEmpty(&a) || SDL_FRectEmpty(&b))
     return 0;
 
   const bool xforward = velocity.x > 0, yforward = velocity.y > 0;
   const float xgoal = a.x + velocity.x, ygoal = a.y + velocity.y;
+
   while (a.x != xgoal) {
     a.x += xforward ? step : -step;
 
@@ -71,8 +49,10 @@ int continuousCollision(SDL_FRect a,
 // Repositions the collider based from where it hit the object
 // @param a: The collider rectangle
 // @param b: The object rectangle
-// @param axis: The axis from wich collision was detected from continuousCollision
-void resolveCollision(SDL_FRect *const a, const SDL_FRect *const b, const int axis) {
+// @param axis: The axis from wich collision was detected
+void resolveCollision(SDL_FRect *const a,
+                      const SDL_FRect *const b,
+                      const int axis) {
   if (a == NULL || b == NULL || SDL_FRectEmpty(a) || SDL_FRectEmpty(b) || !axis)
     return;
 
@@ -110,7 +90,7 @@ void itemCollision(GameState *state, const ushort index) {
     if (state->blocks[i].broken)
       continue;
 
-    const int result = continuousCollision(
+    const int result = collision(
       item->rect, item->velocity, block->rect, state->screen.tile / 2);
 
     if (!result)
@@ -121,11 +101,14 @@ void itemCollision(GameState *state, const ushort index) {
       continue;
     }
 
+    // EROR: On the frame before star hopping starts, the resolve is not
+    // properly made FIX: The idiot here just did not account for a start
+    // hitting the top of a block
     resolveCollision(&item->rect, &block->rect, result);
 
     if (result > 0)
       item->velocity.x = -item->velocity.x;
-    else if (result < 0 && item->type == STAR)
+    else if (item->type == STAR && item->rect.y + item->rect.h == block->rect.y)
       item->velocity.y = -ITEM_JUMP_FORCE;
     else
       item->velocity.y = 0;
@@ -133,12 +116,11 @@ void itemCollision(GameState *state, const ushort index) {
 
   for (uint i = 0; i < state->objsLength; i++) {
     const SDL_FRect *const object = &state->objs[i];
-    // const int result = continuousCollision(
-    //   item->rect, item->velocity, *object, state->screen.tile / 2);
-    // ERROR: Collision detection methods that use the velocity of the item
-    // cause item hopping for some reason
-    // FIX IDEA: Implement object after velocity application
-    // NOTE: Temporary trick to stop item hopping
+    // ERROR: Using collision() in a if statement causes weird behaviour
+    // ERROR: Using its value in !result or resolveCollision() causes weirder
+    // behaviour const int result = collision(item->rect, item->velocity,
+    // *object, state->screen.tile / 2); NOTE: Temporary trick to stop item
+    // hopping
     const int result = item->rect.y > object->y - item->rect.h * 1.25 ? -1 : 0;
 
     if (!result)
@@ -148,7 +130,7 @@ void itemCollision(GameState *state, const ushort index) {
 
     if (result > 0)
       item->velocity.x = -item->velocity.x;
-    else if (result < 0 && item->type == STAR)
+    else if (item->type == STAR && item->rect.y + item->rect.h == object->y)
       item->velocity.y = -ITEM_JUMP_FORCE;
     else
       item->velocity.y = 0;
@@ -177,13 +159,13 @@ void fireballCollision(GameState *state, const ushort index) {
 
   for (uint i = 0; i < state->blocksLenght; i++) {
     const SDL_FRect *block = &state->blocks[i].rect;
-    (void) block;
+    (void)block;
 
     if (state->blocks[i].broken)
       continue;
 
-    const int result = continuousCollision(
-      ball->rect, ball->velocity, *block, state->screen.tile / 2);
+    const int result =
+      collision(ball->rect, ball->velocity, *block, state->screen.tile / 2);
 
     if (!result)
       continue;
@@ -199,8 +181,8 @@ void fireballCollision(GameState *state, const ushort index) {
   for (uint i = 0; i < state->objsLength; i++) {
     const SDL_FRect *const object = &state->objs[i];
 
-    const int result = continuousCollision(
-      ball->rect, ball->velocity, *object, state->screen.tile / 2);
+    const int result =
+      collision(ball->rect, ball->velocity, *object, state->screen.tile / 2);
 
     if (!result)
       continue;
@@ -226,16 +208,20 @@ void playerCollision(GameState *state) {
     Item *item = &block->item;
 
     // If a block has been broken or is off-screen, skip its collision check
-    if (block->broken || (block->rect.x + block->rect.w < 0 || block->rect.x > state->screen.w) ||
+    if (block->broken ||
+        (block->rect.x + block->rect.w < 0 ||
+         block->rect.x > state->screen.w) ||
         (block->rect.y + block->rect.h < 0 || block->rect.y > state->screen.h))
       continue;
 
-    const int result = continuousCollision(player->hitbox, player->velocity, block->rect, state->screen.tile);
+    const int result = collision(
+      player->hitbox, player->velocity, block->rect, state->screen.tile);
 
     if (!result && !item->free)
       continue;
 
-    if (result < 0 && player->velocity.y > 0 && block->rect.y > player->hitbox.y)
+    if (result < 0 && player->velocity.y > 0 &&
+        block->rect.y > player->hitbox.y)
       player->onSurface = true;
 
     resolveCollision(&player->hitbox, &block->rect, result);
@@ -247,34 +233,23 @@ void playerCollision(GameState *state) {
     //   if (neighbour->rect.x <= player->rect.x + player->rect.w / 2.0)
     //     continue;
     // }
-     
+
     if (result > 0)
       player->velocity.x = 0;
     else if (result < 0) {
       if (player->velocity.y < 0) {
         if (block->type == NOTHING && player->tall)
           block->broken = true;
-        // TODO: When moving logic to render.c, just assign gotHit = true and leave the type logic to rendering file
-        else if (block->type == NOTHING || (block->type == FULL && item->type == COINS))
-          block->gotHit = true;
+        block->gotHit = true;
 
         if (block->type == FULL)
           item->free = true;
 
-        if (block->type == FULL && item->type != COINS) {
-          block->type = EMPTY;
-          // TODO: Move this to render.c
-          block->sprite = EMPTY_SPRITE;
-        }
-        
         // TODO: Later add this coin to player->coinCount
         if (item->type == COINS && block->coinCount) {
           block->coinCount--;
-          if (!block->coinCount) {
+          if (!block->coinCount)
             block->type = EMPTY;
-            // TODO: Move this to render.c
-            block->sprite = EMPTY_SPRITE;
-          }
           for (ushort j = 0; j < block->maxCoins; j++) {
             Coin *coin = &block->coins[j];
             if (!coin->onAir) {
@@ -289,7 +264,8 @@ void playerCollision(GameState *state) {
 
     // Item collison
     if (item->visible && item->free && item->type > COINS) {
-      if (!continuousCollision(player->hitbox, player->velocity, item->rect, state->screen.tile))
+      if (!collision(
+            player->hitbox, player->velocity, item->rect, state->screen.tile))
         continue;
 
       item->visible = false;
@@ -314,7 +290,7 @@ void playerCollision(GameState *state) {
         (object->y + object->h < 0 || object->y > state->screen.h))
       continue;
 
-    const int result = continuousCollision(
+    const int result = collision(
       player->hitbox, player->velocity, *object, state->screen.tile / 2);
 
     if (!result)

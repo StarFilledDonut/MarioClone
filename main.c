@@ -2,11 +2,11 @@
 #include <SDL2/SDL_keyboard.h>
 #include <SDL2/SDL_rect.h>
 #include <stdbool.h>
+#include "collision.h"
 #include "gameState.h"
 #include "init.h"
 #include "input.h"
 #include "render.h"
-#include "collision.h"
 
 // Apply physics to the player, the objects, and the enemies
 void physics(GameState *state) {
@@ -18,7 +18,7 @@ void physics(GameState *state) {
   if (player->crounching && player->hitbox.h == state->screen.tile * 2) {
     player->hitbox.y += state->screen.tile;
     player->hitbox.h = state->screen.tile;
-  } else if (!player->crounching &&
+  } else if (!player->crounching && player->tall &&
              player->hitbox.h != state->screen.tile * 2) {
     player->hitbox.y -= state->screen.tile;
     player->hitbox.h = state->screen.tile * 2;
@@ -54,8 +54,9 @@ void physics(GameState *state) {
     Item *item = &state->blocks[i].item;
 
     if ((!item->free || !item->visible) || item->type == FIRE_FLOWER ||
-        SDL_HasIntersectionF(&item->rect, &block->rect))
+        block->type != EMPTY)
       continue;
+
     // In the original, default direction is always right
     // On the following games, the starting direction of an
     // item depends on your position in relation to the block
@@ -85,7 +86,3 @@ int main(void) {
     render(&state);
   }
 }
-// ERROR: When the STAR collides with a block by the bottom side ledge
-// it will ignore gravity and sideways bounce and istead climb the block
-// TODO: Add a delay from wich is possible the player to fire fireballs with the
-// key held

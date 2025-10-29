@@ -39,7 +39,10 @@ void blockAnimation(Block *block, const ushort tile) {
 
 // Animate items and coins comming out of the block
 void itemAnimation(Block *block, const ushort tile) {
-  if (block->item.type > COINS && block->item.free) {
+  if (!block->item.free)
+    return;
+
+  if (block->item.type > COINS) {
     if (block->item.rect.y > block->initY - tile)
       block->item.rect.y -= BLOCK_SPEED;
     else
@@ -48,7 +51,7 @@ void itemAnimation(Block *block, const ushort tile) {
 
   // When the type Coin be made into type of Coin, make it so onAir is
   // unnecessary Coins coming out of block
-  if (block->item.type == COINS && block->item.free) {
+  if (block->item.type == COINS) {
     const float COIN_SPEED = BLOCK_SPEED * 3;
     for (ushort i = 0; i < block->maxCoins; i++) {
       Coin *coin = &block->coins[i];
@@ -253,16 +256,21 @@ void render(GameState *state) {
       }
     }
 
-    // Animating blocks and items
-    if ((!player->tall && block->type == NOTHING) ||
-        block->item.type == COINS) {
-      blockAnimation(block, screen->tile);
-    }
-    if (block->type != NOTHING)
+    // Animating items
+    if (block->type != NOTHING) {
       itemAnimation(block, screen->tile);
+      if ((block->item.type != COINS && block->item.free) ||
+          (block->item.type == COINS && !block->coinCount))
+        block->sprite = EMPTY_SPRITE;
+    }
 
     // Rendering blocks or broken block's particles
     if (!block->broken) {
+      // Animating blocks
+      if (block->type != EMPTY &&
+          (block->gotHit || block->rect.y != block->initY))
+        blockAnimation(block, screen->tile);
+
       SDL_RenderCopyF(state->renderer,
                       sheets->objs,
                       &sheets->srcsobjs[block->sprite],

@@ -26,7 +26,7 @@ void handleEvents(GameState *state) {
             quit(state, 0);
             break;
           case SDLK_f: {
-            if (!player->fireForm || player->crounching)
+            if (!player->fireForm || player->crounching || player->firing)
               break;
 
             // Finding an available fireball slot
@@ -67,7 +67,8 @@ void handleEvents(GameState *state) {
           break;
 
         const SDL_Keycode keyup = event.key.keysym.sym;
-        if ((player->jumping || !player->velocity.y) && (keyup == SDLK_SPACE || keyup == SDLK_w || keyup == SDLK_UP)) {
+        if ((player->jumping || !player->velocity.y) &&
+            (keyup == SDLK_SPACE || keyup == SDLK_w || keyup == SDLK_UP)) {
           if (player->velocity.y < 0)
             player->velocity.y = player->velocity.y * 0.5;
           else
